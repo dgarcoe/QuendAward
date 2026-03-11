@@ -37,12 +37,13 @@ def _render_stats(t: dict, award_id: int):
     """Render stats cards and bar charts."""
     stats = db.get_qso_stats(award_id)
 
-    # Metric cards row
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric(t['qso_total'], f"{stats['total']:,}")
-    c2.metric(t['qso_today'], f"{stats['today']:,}")
-    c3.metric(t['qso_unique_calls'], f"{stats['unique_calls']:,}")
-    c4.metric(t['qso_active_operators'], f"{stats['active_operators']:,}")
+    # Metric cards — 2x2 grid works better on mobile than 4-wide
+    r1c1, r1c2 = st.columns(2)
+    r1c1.metric(t['qso_total'], f"{stats['total']:,}")
+    r1c2.metric(t['qso_today'], f"{stats['today']:,}")
+    r2c1, r2c2 = st.columns(2)
+    r2c1.metric(t['qso_unique_calls'], f"{stats['unique_calls']:,}")
+    r2c2.metric(t['qso_active_operators'], f"{stats['active_operators']:,}")
 
     if stats['total'] == 0:
         return
@@ -137,27 +138,29 @@ def _render_log_table(t: dict, award_id: int, callsign: str, is_admin: bool):
     # Fetch filter options once
     filter_opts = _get_filter_options(award_id)
 
-    # Filters + page size selector in one row
-    filter_cols = st.columns([2, 2, 2, 1])
-    with filter_cols[0]:
+    # Filters — 2x2 grid for better mobile stacking
+    f_row1_c1, f_row1_c2 = st.columns(2)
+    with f_row1_c1:
         band_filter = st.selectbox(
             t['qso_filter_band'],
             [t['qso_filter_all']] + filter_opts['band'],
             key=f"qso_band_filter_{award_id}",
         )
-    with filter_cols[1]:
+    with f_row1_c2:
         mode_filter = st.selectbox(
             t['qso_filter_mode'],
             [t['qso_filter_all']] + filter_opts['mode'],
             key=f"qso_mode_filter_{award_id}",
         )
-    with filter_cols[2]:
+
+    f_row2_c1, f_row2_c2 = st.columns(2)
+    with f_row2_c1:
         op_filter = st.selectbox(
             t['qso_filter_operator'],
             [t['qso_filter_all']] + filter_opts['operator_callsign'],
             key=f"qso_op_filter_{award_id}",
         )
-    with filter_cols[3]:
+    with f_row2_c2:
         page_size_key = f"qso_page_size_{award_id}"
         if page_size_key not in st.session_state:
             st.session_state[page_size_key] = DEFAULT_PAGE_SIZE
@@ -211,183 +214,178 @@ def _render_log_table(t: dict, award_id: int, callsign: str, is_admin: bool):
                 st.session_state[page_key] = page + 1
                 st.rerun()
 
-    # Build display dataframe — fast st.dataframe for everyone
+    # Build compact dataframe — essential columns only for mobile-friendliness
     rows = []
     for q in qsos:
         rows.append({
-            'ID': q['id'],
             t['qso_col_date']: q['qso_date'],
             t['qso_col_time']: q['time_on'],
             t['qso_col_operator']: q['operator_callsign'],
             t['qso_col_call']: q['call'],
             t['qso_col_band']: q['band'],
             t['qso_col_mode']: q['mode'],
-            t['qso_col_rst_sent']: q.get('rst_sent', ''),
-            t['qso_col_rst_rcvd']: q.get('rst_rcvd', ''),
-            t['qso_col_freq']: q.get('freq', '') or '',
-            t['qso_col_name']: q.get('name', '') or '',
-            t['qso_col_comment']: q.get('comment', '') or '',
         })
 
     df = pd.DataFrame(rows)
-    display_df = df.drop(columns=['ID'])
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-    # Admin inline edit/delete via selectbox under the table
-    if is_admin and qsos:
-        _render_admin_controls(t, award_id, qsos)
+    # Admin: clickable row selection; Operator: plain read-only table
+    if is_admin:
+        event = st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key=f"qso_table_{award_id}_{page}",
+        )
+
+        selected_rows = event.selection.rows if event and event.selection else []
+
+        if selected_rows:
+            row_idx = selected_rows[0]
+            if row_idx < len(qsos):
+                _render_selected_qso_controls(t, award_id, qsos[row_idx])
+        else:
+            st.caption(t.get('qso_click_to_edit', 'Click a row to edit or delete'))
+
+        # Bulk delete by operator
+        _render_admin_bulk_section(t, award_id)
+    else:
+        st.dataframe(df, use_container_width=True, hide_index=True)
 
     # Export and delete own QSOs (lazy-loaded)
     _render_operator_actions(t, award_id, callsign, is_admin)
 
 
-def _render_admin_controls(t: dict, award_id: int, qsos: list[dict]):
-    """Render admin QSO edit/delete controls (selectbox + form, not per-row)."""
+def _render_selected_qso_controls(t: dict, award_id: int, qso: dict):
+    """Render edit form and delete button for a selected QSO row."""
+    qso_id = qso['id']
     editing_key = f"editing_qso_{award_id}"
     deleting_key = f"deleting_qso_{award_id}"
 
-    # Build label -> id map
-    qso_options = {
-        f"{q['qso_date']} {q['time_on']} — {q['call']} ({q['band']}/{q['mode']}) [{q['operator_callsign']}]": q['id']
-        for q in qsos
-    }
-    option_labels = list(qso_options.keys())
+    # Show summary of selected QSO + action buttons
+    summary = f"**{qso['qso_date']} {qso['time_on']} — {qso['call']} ({qso['band']}/{qso['mode']}) [{qso['operator_callsign']}]**"
+    st.markdown(summary)
 
-    st.markdown("---")
-    ctrl_cols = st.columns([4, 1, 1])
-    with ctrl_cols[0]:
-        selected = st.selectbox(
-            t.get('qso_admin_edit', 'Edit QSO'),
-            option_labels,
-            key=f"admin_qso_select_{award_id}",
-            label_visibility="collapsed",
-        )
-    selected_id = qso_options[selected] if selected else None
-
-    with ctrl_cols[1]:
+    btn_c1, btn_c2, _ = st.columns([1, 1, 4])
+    with btn_c1:
         if st.button("✏️ " + t['qso_admin_edit'], key=f"edit_btn_{award_id}"):
-            st.session_state[editing_key] = selected_id
+            st.session_state[editing_key] = qso_id
             st.session_state[deleting_key] = None
             st.rerun()
-
-    with ctrl_cols[2]:
+    with btn_c2:
         if st.button("🗑️ " + t['qso_admin_delete'], key=f"del_btn_{award_id}"):
-            st.session_state[deleting_key] = selected_id
+            st.session_state[deleting_key] = qso_id
             st.session_state[editing_key] = None
             st.rerun()
 
-    # Inline edit form
-    if st.session_state.get(editing_key):
-        qso_id = st.session_state[editing_key]
-        qso = next((q for q in qsos if q['id'] == qso_id), None)
-        if qso:
-            with st.container(border=True):
-                st.markdown(f"**{t['qso_admin_edit']} — {qso['call']}**")
-                ec1, ec2 = st.columns(2)
-                with ec1:
-                    new_call = st.text_input(t['qso_col_call'], value=qso['call'], key=f"edit_call_{qso_id}")
-                    new_band = st.text_input(t['qso_col_band'], value=qso['band'], key=f"edit_band_{qso_id}")
-                    new_mode = st.text_input(t['qso_col_mode'], value=qso['mode'], key=f"edit_mode_{qso_id}")
-                    new_date = st.text_input(t['qso_col_date'], value=qso['qso_date'], key=f"edit_date_{qso_id}")
-                    new_time = st.text_input(t['qso_col_time'], value=qso['time_on'], key=f"edit_time_{qso_id}")
-                with ec2:
-                    new_rst_s = st.text_input(t['qso_col_rst_sent'], value=qso.get('rst_sent', '') or '', key=f"edit_rsts_{qso_id}")
-                    new_rst_r = st.text_input(t['qso_col_rst_rcvd'], value=qso.get('rst_rcvd', '') or '', key=f"edit_rstr_{qso_id}")
-                    new_freq = st.text_input(t['qso_col_freq'], value=str(qso.get('freq', '') or ''), key=f"edit_freq_{qso_id}")
-                    new_name = st.text_input(t['qso_col_name'], value=qso.get('name', '') or '', key=f"edit_name_{qso_id}")
-                    new_comment = st.text_input(t['qso_col_comment'], value=qso.get('comment', '') or '', key=f"edit_comment_{qso_id}")
+    # Edit form
+    if st.session_state.get(editing_key) == qso_id:
+        with st.container(border=True):
+            ec1, ec2 = st.columns(2)
+            with ec1:
+                new_call = st.text_input(t['qso_col_call'], value=qso['call'], key=f"edit_call_{qso_id}")
+                new_band = st.text_input(t['qso_col_band'], value=qso['band'], key=f"edit_band_{qso_id}")
+                new_mode = st.text_input(t['qso_col_mode'], value=qso['mode'], key=f"edit_mode_{qso_id}")
+                new_date = st.text_input(t['qso_col_date'], value=qso['qso_date'], key=f"edit_date_{qso_id}")
+                new_time = st.text_input(t['qso_col_time'], value=qso['time_on'], key=f"edit_time_{qso_id}")
+            with ec2:
+                new_rst_s = st.text_input(t['qso_col_rst_sent'], value=qso.get('rst_sent', '') or '', key=f"edit_rsts_{qso_id}")
+                new_rst_r = st.text_input(t['qso_col_rst_rcvd'], value=qso.get('rst_rcvd', '') or '', key=f"edit_rstr_{qso_id}")
+                new_freq = st.text_input(t['qso_col_freq'], value=str(qso.get('freq', '') or ''), key=f"edit_freq_{qso_id}")
+                new_name = st.text_input(t['qso_col_name'], value=qso.get('name', '') or '', key=f"edit_name_{qso_id}")
+                new_comment = st.text_input(t['qso_col_comment'], value=qso.get('comment', '') or '', key=f"edit_comment_{qso_id}")
 
-                btn_cols = st.columns([1, 1, 4])
-                with btn_cols[0]:
-                    if st.button(t['qso_save'], key=f"save_edit_{qso_id}", type="primary"):
-                        update_data = {
-                            'call': new_call.upper(),
-                            'band': new_band,
-                            'mode': new_mode.upper(),
-                            'qso_date': new_date,
-                            'time_on': new_time,
-                            'rst_sent': new_rst_s,
-                            'rst_rcvd': new_rst_r,
-                            'name': new_name,
-                            'comment': new_comment,
-                        }
-                        if new_freq:
-                            try:
-                                update_data['freq'] = float(new_freq)
-                            except ValueError:
-                                pass
-                        success, msg = db.update_qso(qso_id, update_data)
-                        if success:
-                            st.success(t['qso_edit_success'])
-                            st.session_state[editing_key] = None
-                            st.rerun()
-                        else:
-                            st.error(msg)
-                with btn_cols[1]:
-                    if st.button(t['qso_cancel'], key=f"cancel_edit_{qso_id}"):
-                        st.session_state[editing_key] = None
-                        st.rerun()
-
-    # Inline delete confirmation
-    if st.session_state.get(deleting_key):
-        qso_id = st.session_state[deleting_key]
-        qso = next((q for q in qsos if q['id'] == qso_id), None)
-        if qso:
-            with st.container(border=True):
-                st.warning(
-                    f"{t['qso_admin_delete_confirm']}\n\n"
-                    f"**{qso['qso_date']} {qso['time_on']} — {qso['call']} ({qso['band']}/{qso['mode']})**"
-                )
-                dc1, dc2, _ = st.columns([1, 1, 4])
-                with dc1:
-                    if st.button(t['qso_admin_delete'], key=f"confirm_del_{qso_id}", type="primary"):
-                        success, msg = db.delete_qso(qso_id)
-                        if success:
-                            st.success(t['qso_delete_success'])
-                            st.session_state[deleting_key] = None
-                            st.rerun()
-                        else:
-                            st.error(msg)
-                with dc2:
-                    if st.button(t['qso_cancel'], key=f"cancel_del_{qso_id}"):
-                        st.session_state[deleting_key] = None
-                        st.rerun()
-
-    # Bulk delete by operator
-    operators = _get_distinct_values(award_id, 'operator_callsign')
-    if operators:
-        st.markdown("---")
-        bulk_cols = st.columns([2, 1])
-        with bulk_cols[0]:
-            bulk_op = st.selectbox(
-                t['qso_admin_delete_operator'],
-                operators,
-                key=f"bulk_del_op_{award_id}",
-            )
-        with bulk_cols[1]:
-            if st.button(
-                t['qso_admin_delete_operator'],
-                key=f"bulk_del_btn_{award_id}",
-                type="primary",
-            ):
-                st.session_state[f"confirm_bulk_del_{award_id}"] = True
-
-        if st.session_state.get(f"confirm_bulk_del_{award_id}"):
-            st.warning(t['qso_admin_delete_operator_confirm'].format(callsign=bulk_op))
-            cc1, cc2 = st.columns([1, 5])
-            with cc1:
-                if st.button(t['qso_admin_delete_operator'], key=f"confirm_bulk_{award_id}", type="primary"):
-                    success, msg, count = db.delete_qsos_by_operator(award_id, bulk_op)
+            save_c, cancel_c = st.columns(2)
+            with save_c:
+                if st.button(t['qso_save'], key=f"save_edit_{qso_id}", type="primary", use_container_width=True):
+                    update_data = {
+                        'call': new_call.upper(),
+                        'band': new_band,
+                        'mode': new_mode.upper(),
+                        'qso_date': new_date,
+                        'time_on': new_time,
+                        'rst_sent': new_rst_s,
+                        'rst_rcvd': new_rst_r,
+                        'name': new_name,
+                        'comment': new_comment,
+                    }
+                    if new_freq:
+                        try:
+                            update_data['freq'] = float(new_freq)
+                        except ValueError:
+                            pass
+                    success, msg = db.update_qso(qso_id, update_data)
                     if success:
-                        st.success(f"{t['qso_delete_success']}: {msg}")
-                        st.session_state[f"confirm_bulk_del_{award_id}"] = False
+                        st.success(t['qso_edit_success'])
+                        st.session_state[editing_key] = None
                         st.rerun()
                     else:
                         st.error(msg)
-            with cc2:
-                if st.button(t['qso_cancel'], key=f"cancel_bulk_{award_id}"):
+            with cancel_c:
+                if st.button(t['qso_cancel'], key=f"cancel_edit_{qso_id}", use_container_width=True):
+                    st.session_state[editing_key] = None
+                    st.rerun()
+
+    # Delete confirmation
+    if st.session_state.get(deleting_key) == qso_id:
+        with st.container(border=True):
+            st.warning(t['qso_admin_delete_confirm'])
+            del_c, cancel_c = st.columns(2)
+            with del_c:
+                if st.button(t['qso_admin_delete'], key=f"confirm_del_{qso_id}", type="primary", use_container_width=True):
+                    success, msg = db.delete_qso(qso_id)
+                    if success:
+                        st.success(t['qso_delete_success'])
+                        st.session_state[deleting_key] = None
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            with cancel_c:
+                if st.button(t['qso_cancel'], key=f"cancel_del_{qso_id}", use_container_width=True):
+                    st.session_state[deleting_key] = None
+                    st.rerun()
+
+
+def _render_admin_bulk_section(t: dict, award_id: int):
+    """Render admin bulk delete section."""
+    operators = _get_distinct_values(award_id, 'operator_callsign')
+    if not operators:
+        return
+
+    st.markdown("---")
+    bulk_cols = st.columns(2)
+    with bulk_cols[0]:
+        bulk_op = st.selectbox(
+            t['qso_admin_delete_operator'],
+            operators,
+            key=f"bulk_del_op_{award_id}",
+        )
+    with bulk_cols[1]:
+        if st.button(
+            t['qso_admin_delete_operator'],
+            key=f"bulk_del_btn_{award_id}",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state[f"confirm_bulk_del_{award_id}"] = True
+
+    if st.session_state.get(f"confirm_bulk_del_{award_id}"):
+        st.warning(t['qso_admin_delete_operator_confirm'].format(callsign=bulk_op))
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            if st.button(t['qso_admin_delete_operator'], key=f"confirm_bulk_{award_id}", type="primary", use_container_width=True):
+                success, msg, count = db.delete_qsos_by_operator(award_id, bulk_op)
+                if success:
+                    st.success(f"{t['qso_delete_success']}: {msg}")
                     st.session_state[f"confirm_bulk_del_{award_id}"] = False
                     st.rerun()
+                else:
+                    st.error(msg)
+        with cc2:
+            if st.button(t['qso_cancel'], key=f"cancel_bulk_{award_id}", use_container_width=True):
+                st.session_state[f"confirm_bulk_del_{award_id}"] = False
+                st.rerun()
 
 
 def _render_operator_actions(t: dict, award_id: int, callsign: str, is_admin: bool):
@@ -396,7 +394,7 @@ def _render_operator_actions(t: dict, award_id: int, callsign: str, is_admin: bo
 
     # Use an expander so export data is only generated when opened
     with st.expander(f"📥 {t.get('qso_export_actions', 'Export & Actions')}", expanded=False):
-        action_cols = st.columns(4 if is_admin else 3)
+        action_cols = st.columns(3 if is_admin else 2)
 
         # Export own ADIF
         with action_cols[0]:
@@ -412,6 +410,7 @@ def _render_operator_actions(t: dict, award_id: int, callsign: str, is_admin: bo
                     file_name=f"qso_log_{callsign}_{award_id}.adi",
                     mime="text/plain",
                     key=f"export_my_{award_id}",
+                    use_container_width=True,
                 )
 
         # Export all ADIF (admin)
@@ -429,6 +428,7 @@ def _render_operator_actions(t: dict, award_id: int, callsign: str, is_admin: bo
                         file_name=f"qso_log_all_{award_id}.adi",
                         mime="text/plain",
                         key=f"export_all_{award_id}",
+                        use_container_width=True,
                     )
 
         # Delete own QSOs
@@ -439,25 +439,26 @@ def _render_operator_actions(t: dict, award_id: int, callsign: str, is_admin: bo
                 if st.button(
                     f"{t['qso_delete_my_qsos']} ({del_count})",
                     key=f"del_my_qsos_{award_id}",
+                    use_container_width=True,
                 ):
                     st.session_state[f"confirm_del_my_{award_id}"] = True
 
-                if st.session_state.get(f"confirm_del_my_{award_id}"):
-                    st.warning(t['qso_delete_my_qsos_confirm'])
-                    cc1, cc2 = st.columns([1, 5])
-                    with cc1:
-                        if st.button(t['qso_delete_my_qsos'], key=f"confirm_del_my_{award_id}", type="primary"):
-                            success, msg, count = db.delete_qsos_by_operator(award_id, callsign)
-                            if success:
-                                st.success(f"{t['qso_delete_success']}: {msg}")
-                                st.session_state[f"confirm_del_my_{award_id}"] = False
-                                st.rerun()
-                            else:
-                                st.error(msg)
-                    with cc2:
-                        if st.button(t['qso_cancel'], key=f"cancel_del_my_{award_id}"):
-                            st.session_state[f"confirm_del_my_{award_id}"] = False
-                            st.rerun()
+        if st.session_state.get(f"confirm_del_my_{award_id}"):
+            st.warning(t['qso_delete_my_qsos_confirm'])
+            cc1, cc2 = st.columns(2)
+            with cc1:
+                if st.button(t['qso_delete_my_qsos'], key=f"confirm_del_my_{award_id}", type="primary", use_container_width=True):
+                    success, msg, count = db.delete_qsos_by_operator(award_id, callsign)
+                    if success:
+                        st.success(f"{t['qso_delete_success']}: {msg}")
+                        st.session_state[f"confirm_del_my_{award_id}"] = False
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            with cc2:
+                if st.button(t['qso_cancel'], key=f"cancel_del_my_{award_id}", use_container_width=True):
+                    st.session_state[f"confirm_del_my_{award_id}"] = False
+                    st.rerun()
 
 
 def _get_distinct_values(award_id: int, column: str) -> list[str]:
