@@ -24,6 +24,7 @@ A web application for coordinating multiple operators activating the same specia
 | 📱 **Mobile-Friendly** | Responsive design for smartphones |
 | 👥 **Multi-Operator** | Secure authentication for teams |
 | 💾 **Backup/Restore** | Database management for admins |
+| 🤖 **Telegram Bot** | Block/unblock bands and receive notifications via Telegram |
 
 ---
 
@@ -69,6 +70,7 @@ streamlit run app.py
 | `DX_CLUSTER_PORT` | DX Cluster Telnet port | No (default: `7300`) |
 | `DX_CLUSTER_CALLSIGN` | Callsign used to log in to the cluster | No |
 | `DX_CLUSTER_PASSWORD` | Password for cluster authentication (if required) | No |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot API token from @BotFather | No (bot disabled when unset) |
 
 ---
 
@@ -131,6 +133,79 @@ DX_CLUSTER_PASSWORD=           # Only if the cluster requires authentication
 ```
 
 When `DX_CLUSTER_HOST` is not set, the send button shows a configuration error. The spot section is always visible but requires an active block to use. Clusters that require password authentication after the callsign login are supported via the optional `DX_CLUSTER_PASSWORD` variable.
+
+---
+
+## 🤖 Telegram Bot
+
+QuendAward includes an optional Telegram bot that allows operators to manage band/mode blocks and receive real-time notifications directly from Telegram.
+
+### Features
+
+- **Link operator accounts** to Telegram via `/link` command
+- **Block/unblock bands** interactively with inline keyboards
+- **View current blocks** for your selected award
+- **Real-time notifications** when other operators block, unblock, or switch bands
+- **Chat mention alerts** when someone @mentions you in the web chat
+- **Multi-language support** (English, Spanish, Galician)
+- **Per-user settings** for default award, notifications, and language
+
+### Setup
+
+1. **Create a Telegram bot**:
+   - Open Telegram and message [@BotFather](https://t.me/BotFather)
+   - Send `/newbot` and follow the prompts
+   - Copy the bot token (looks like `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`)
+
+2. **Configure the bot token**:
+   ```bash
+   # In .env
+   TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+   ```
+
+3. **Run the bot** (via Docker Compose or manually):
+   ```bash
+   # Included automatically in docker-compose up
+   # OR manually:
+   python services/telegram_bot.py
+   ```
+
+### Using the bot
+
+1. **Link your account**: Open your bot on Telegram and send:
+   ```
+   /link <your_callsign> <your_password>
+   ```
+
+2. **Set your default award**:
+   ```
+   /awards              # List available awards
+   /setaward <id>       # Set your default award
+   ```
+
+3. **Manage blocks**:
+   ```
+   /block               # Interactive block selection
+   /myblocks            # View your blocks
+   /unblock             # Release all your blocks
+   /blocks              # View all blocks for current award
+   ```
+
+4. **Configure preferences**:
+   ```
+   /notifications on    # Enable notifications
+   /lang en             # Set language (en/es/gl)
+   /status              # View your settings
+   ```
+
+### How notifications work
+
+When linked operators have notifications enabled:
+- Get notified when **other operators** block, unblock, or switch bands in your default award
+- Receive alerts when someone **@mentions** your callsign in the web chat
+- Notifications respect your language preference
+
+Set your default award with `/setaward <id>` to receive relevant block notifications for that special callsign.
 
 ---
 
