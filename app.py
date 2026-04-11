@@ -35,7 +35,8 @@ from ui.components import (
     render_language_selector,
     render_award_selector,
     render_activity_dashboard,
-    render_announcements_operator_tab
+    render_announcements_operator_tab,
+    render_qso_log_tab,
 )
 
 # Import admin functions
@@ -374,6 +375,7 @@ def operator_panel():
     feature_flags = _cached_feature_flags()
     show_announcements = feature_flags.get('feature_announcements', True)
     show_chat = CHAT_ENABLED and feature_flags.get('feature_chat', True)
+    show_qso_log = feature_flags.get('feature_qso_log', True)
 
     st.title(f"🎙️ {t['app_title']}")
     st.subheader(f"{t['welcome']}, {st.session_state.operator_name} ({st.session_state.callsign})")
@@ -469,6 +471,8 @@ def operator_panel():
         tab_labels.append(f"📢 {t['tab_announcements']}")
     if show_chat:
         tab_labels.append(f"💬 {t.get('tab_chat', 'Chat')}")
+    if show_qso_log:
+        tab_labels.append(f"📋 {t.get('tab_qso_log', 'QSO Log')}")
     if st.session_state.is_admin:
         tab_labels.append(f"🔐 {t['admin_panel']}")
     tab_labels.append(f"⚙️ {t['tab_settings']}")
@@ -543,6 +547,16 @@ def operator_panel():
                 )
             else:
                 st.info(t.get('chat_no_rooms', 'No chat rooms available.'))
+        tab_idx += 1
+
+    if show_qso_log:
+        with tabs[tab_idx]:
+            render_qso_log_tab(
+                t,
+                st.session_state.current_award_id,
+                st.session_state.callsign,
+                is_admin=st.session_state.is_admin,
+            )
         tab_idx += 1
 
     if st.session_state.is_admin:

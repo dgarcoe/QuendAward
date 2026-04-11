@@ -795,10 +795,16 @@ def render_feature_visibility_tab(t):
         value=flags.get('feature_chat', True),
         key="fv_chat"
     )
+    new_qso_log = st.toggle(
+        t.get('tab_qso_log', 'QSO Log'),
+        value=flags.get('feature_qso_log', True),
+        key="fv_qso_log"
+    )
 
     if st.button(t.get('save_changes', 'Save Changes'), type="primary", key="fv_save"):
         db.set_app_setting('feature_announcements', '1' if new_announcements else '0')
         db.set_app_setting('feature_chat', '1' if new_chat else '0')
+        db.set_app_setting('feature_qso_log', '1' if new_qso_log else '0')
         # Feature flags are cached at the app level; flush so operators
         # see the change on their next rerun instead of up to 30s later.
         st.cache_data.clear()

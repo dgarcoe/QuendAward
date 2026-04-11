@@ -519,3 +519,368 @@ def render_announcements_operator_tab(t, operator_callsign):
                 if st.button(t.get('mark_as_read', 'Mark as read'), key=f"mark_read_{ann['id']}"):
                     db.mark_announcement_read(ann['id'], operator_callsign)
                     st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# QSO log
+# ---------------------------------------------------------------------------
+
+_QSO_PAGE_SIZE = 25
+
+
+def render_qso_log_tab(t, award_id, operator_callsign, is_admin=False):
+    """Render the QSO log tab: upload, stats, paginated view, export.
+
+    Designed to stay responsive on mobile:
+      - single spinner while the background ingest runs
+      - paginated display (never dumps the whole log into st.dataframe)
+      - summary-first, details on demand
+    """
+    if not award_id:
+        st.warning(f"⚠️ {t['error_no_special_callsign_selected']}")
+        return
+
+    st.subheader(f"📋 {t.get('qso_log_title', 'QSO Log')}")
+
+    # Current award for display name + export filename
+    award = db.get_award_by_id(award_id)
+    award_name = award['name'] if award else "qso_log"
+
+    # --- Scope toggle (admin can see everyone's QSOs, operator is always own)
+    scope_is_own = True
+    if is_admin:
+        scope_choice = st.radio(
+            t.get('qso_scope_label', 'Scope'),
+            options=['own', 'all'],
+            format_func=lambda s: (
+                t.get('qso_scope_own', 'My QSOs') if s == 'own'
+                else t.get('qso_scope_all', 'All operators')
+            ),
+            horizontal=True,
+            key=f"qso_scope_{award_id}",
+        )
+        scope_is_own = (scope_choice == 'own')
+    scoped_operator = operator_callsign if scope_is_own else None
+
+    # --- Upload section
+    _render_qso_upload_section(t, award_id, operator_callsign, award_name)
+
+    st.divider()
+
+    # --- Stats
+    stats = db.get_qso_stats(award_id, operator_callsign=scoped_operator)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(t.get('qso_total', 'Total QSOs'), stats['total'])
+    with col2:
+        st.metric(t.get('qso_unique_calls', 'Unique Calls'), stats['unique_calls'])
+    with col3:
+        top_band = next(iter(stats['by_band']), None) if stats['by_band'] else None
+        st.metric(
+            t.get('qso_top_band', 'Top Band'),
+            top_band if top_band else "—",
+        )
+
+    if stats['by_band'] or stats['by_mode']:
+        bcol, mcol = st.columns(2)
+        with bcol:
+            st.caption(t.get('qso_by_band', 'By Band'))
+            for band, cnt in stats['by_band'].items():
+                st.write(f"**{band}** — {cnt}")
+        with mcol:
+            st.caption(t.get('qso_by_mode', 'By Mode'))
+            for mode, cnt in stats['by_mode'].items():
+                st.write(f"**{mode}** — {cnt}")
+
+    st.divider()
+
+    # --- Filters + paginated log view
+    _render_qso_log_view(
+        t, award_id, scoped_operator, award_name, stats['total']
+    )
+
+    # --- Upload history (own batches, undo)
+    st.divider()
+    _render_qso_batches_section(t, award_id, operator_callsign, is_admin)
+
+
+def _render_qso_upload_section(t, award_id, operator_callsign, award_name):
+    """Upload an ADIF file and ingest it in the background."""
+    from features.qso_log import MAX_ADIF_UPLOAD_BYTES
+
+    st.markdown(f"**📤 {t.get('qso_upload_heading', 'Upload ADIF log')}**")
+    st.caption(
+        t.get(
+            'qso_upload_help',
+            'Upload an ADIF file exported from your logger (N1MM, Log4OM, etc.). '
+            'Duplicates are skipped automatically. Max 10 MB per upload.'
+        )
+    )
+
+    uploaded = st.file_uploader(
+        t.get('qso_upload_label', 'ADIF file'),
+        type=['adi', 'adif', 'txt'],
+        key=f"qso_adif_upload_{award_id}",
+        accept_multiple_files=False,
+    )
+
+    if uploaded is None:
+        return
+
+    if uploaded.size > MAX_ADIF_UPLOAD_BYTES:
+        st.error(
+            t.get(
+                'qso_upload_too_large',
+                f'File too large (max {MAX_ADIF_UPLOAD_BYTES // (1024*1024)} MB).'
+            )
+        )
+        return
+
+    if st.button(
+        f"📥 {t.get('qso_upload_button', 'Ingest log')}",
+        type="primary",
+        key=f"qso_ingest_btn_{award_id}",
+    ):
+        from features.qso_log import ingest_adif_async
+
+        future = ingest_adif_async(
+            award_id=award_id,
+            operator_callsign=operator_callsign,
+            file_bytes=uploaded.getvalue(),
+            filename=uploaded.name,
+        )
+        size_kb = max(1, uploaded.size // 1024)
+        processing_template = t.get('qso_upload_processing', 'Processing {size_kb} KB…')
+        try:
+            spinner_text = processing_template.format(size_kb=size_kb)
+        except (KeyError, IndexError):
+            spinner_text = processing_template
+        with st.spinner(spinner_text):
+            try:
+                result = future.result(timeout=120)
+            except concurrent.futures.TimeoutError:
+                st.warning(
+                    t.get(
+                        'qso_upload_timeout',
+                        'Still processing in the background — refresh in a moment.'
+                    )
+                )
+                return
+            except ValueError as e:
+                st.error(str(e))
+                return
+            except Exception:
+                logger_ = _get_logger()
+                logger_.exception("QSO ingest failed")
+                st.error(t.get('qso_upload_failed', 'Ingest failed.'))
+                return
+
+        st.success(
+            t.get(
+                'qso_upload_result',
+                '✅ {inserted} new QSOs, {duplicates} duplicates, {errors} errors'
+            ).format(
+                inserted=result['inserted'],
+                duplicates=result['duplicates'],
+                errors=result['errors'],
+            )
+        )
+        st.rerun()
+
+
+def _render_qso_log_view(
+    t, award_id, scoped_operator, award_name, total_count
+):
+    """Filtered + paginated log view with ADIF export button."""
+    from config import BANDS, MODES
+
+    if total_count == 0:
+        st.info(t.get('qso_no_qsos', 'No QSOs uploaded yet.'))
+        return
+
+    st.markdown(f"**📒 {t.get('qso_recent_heading', 'Log')}**")
+
+    filter_col1, filter_col2, filter_col3 = st.columns(3)
+    with filter_col1:
+        band_filter = st.selectbox(
+            t.get('qso_filter_band', 'Band'),
+            options=['*'] + BANDS,
+            format_func=lambda s: t.get('qso_all', 'All') if s == '*' else s,
+            key=f"qso_flt_band_{award_id}",
+        )
+    with filter_col2:
+        mode_filter = st.selectbox(
+            t.get('qso_filter_mode', 'Mode'),
+            options=['*'] + MODES,
+            format_func=lambda s: t.get('qso_all', 'All') if s == '*' else s,
+            key=f"qso_flt_mode_{award_id}",
+        )
+    with filter_col3:
+        # Pagination control: reset to 0 when filters change
+        filter_key = f"qso_page_{award_id}_{band_filter}_{mode_filter}"
+        page = st.number_input(
+            t.get('qso_page', 'Page'),
+            min_value=1,
+            value=1,
+            step=1,
+            key=filter_key,
+        )
+
+    band_sel = None if band_filter == '*' else band_filter
+    mode_sel = None if mode_filter == '*' else mode_filter
+
+    filtered_total = db.count_qsos(
+        award_id=award_id,
+        operator_callsign=scoped_operator,
+        band=band_sel,
+        mode=mode_sel,
+    )
+    total_pages = max(1, (filtered_total + _QSO_PAGE_SIZE - 1) // _QSO_PAGE_SIZE)
+    page = min(int(page), total_pages)
+    offset = (page - 1) * _QSO_PAGE_SIZE
+
+    qsos = db.get_qsos_page(
+        award_id=award_id,
+        operator_callsign=scoped_operator,
+        limit=_QSO_PAGE_SIZE,
+        offset=offset,
+        band=band_sel,
+        mode=mode_sel,
+    )
+
+    st.caption(
+        t.get(
+            'qso_page_info',
+            'Showing {shown} of {total} QSOs — page {page} of {pages}'
+        ).format(
+            shown=len(qsos),
+            total=filtered_total,
+            page=page,
+            pages=total_pages,
+        )
+    )
+
+    if qsos:
+        display_rows = []
+        for q in qsos:
+            row = {
+                t.get('qso_col_date', 'Date'): q.get('qso_date', ''),
+                t.get('qso_col_time', 'UTC'): q.get('time_on', ''),
+                t.get('qso_col_call', 'Call'): q.get('call', ''),
+                t.get('qso_col_band', 'Band'): q.get('band', ''),
+                t.get('qso_col_mode', 'Mode'): q.get('mode', ''),
+                t.get('qso_col_rst_s', 'S'): q.get('rst_sent') or '',
+                t.get('qso_col_rst_r', 'R'): q.get('rst_rcvd') or '',
+            }
+            if scoped_operator is None:
+                row[t.get('qso_col_op', 'Op')] = q.get('operator_callsign', '')
+            display_rows.append(row)
+        st.dataframe(
+            display_rows,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        # ADIF export: pull everything matching the current filter, not just
+        # the visible page. Capped at 50k to avoid runaway downloads.
+        export_qsos = db.get_qsos_page(
+            award_id=award_id,
+            operator_callsign=scoped_operator,
+            limit=50000,
+            offset=0,
+            band=band_sel,
+            mode=mode_sel,
+        )
+        adif_text = db.export_qsos_to_adif(
+            export_qsos,
+            station_callsign=award_name,
+        )
+        st.download_button(
+            label=f"📥 {t.get('qso_export_adif', 'Export ADIF')}",
+            data=adif_text.encode('utf-8'),
+            file_name=f"{award_name}_qsos.adi",
+            mime="text/plain",
+            key=f"qso_export_btn_{award_id}_{band_filter}_{mode_filter}",
+        )
+
+
+def _render_qso_batches_section(t, award_id, operator_callsign, is_admin):
+    """Upload history with per-batch undo."""
+    st.markdown(f"**🗂️ {t.get('qso_upload_history', 'Upload history')}**")
+
+    # Non-admin operators only see their own batches. Admins see everything.
+    scope_op = None if is_admin else operator_callsign
+    batches = db.get_upload_batches(
+        award_id=award_id,
+        operator_callsign=scope_op,
+        limit=10,
+    )
+    if not batches:
+        st.caption(t.get('qso_no_batches', 'No uploads yet.'))
+        return
+
+    for batch in batches:
+        ts = (batch.get('uploaded_at') or '')[:16]
+        fname = batch.get('filename') or 'upload.adi'
+        inserted = batch.get('inserted', 0)
+        duplicates = batch.get('duplicates', 0)
+        errors = batch.get('errors', 0)
+        owner = batch.get('operator_callsign', '')
+
+        label = f"{ts} — {fname} — {owner}"
+        with st.expander(label, expanded=False):
+            st.write(
+                f"**{t.get('qso_batch_inserted', 'Inserted')}:** {inserted} · "
+                f"**{t.get('qso_batch_duplicates', 'Duplicates')}:** {duplicates} · "
+                f"**{t.get('qso_batch_errors', 'Errors')}:** {errors}"
+            )
+            # Only owner or admin can undo a batch
+            can_delete = is_admin or (owner == operator_callsign.upper())
+            if can_delete:
+                confirm_key = f"qso_undo_batch_confirm_{batch['id']}"
+                if st.session_state.get(confirm_key):
+                    yes_col, no_col = st.columns(2)
+                    with yes_col:
+                        if st.button(
+                            t.get('confirm_delete', 'Yes, delete'),
+                            type="primary",
+                            key=f"qso_undo_yes_{batch['id']}",
+                        ):
+                            del st.session_state[confirm_key]
+                            scope = None if is_admin else operator_callsign
+                            ok, removed = db.delete_batch(batch['id'], scope)
+                            if ok:
+                                st.success(
+                                    t.get(
+                                        'qso_batch_undone',
+                                        'Removed {n} QSOs from this batch'
+                                    ).format(n=removed)
+                                )
+                                st.rerun()
+                            else:
+                                st.error(
+                                    t.get(
+                                        'qso_batch_undo_failed',
+                                        'Could not remove this batch'
+                                    )
+                                )
+                    with no_col:
+                        if st.button(
+                            t.get('cancel', 'Cancel'),
+                            key=f"qso_undo_no_{batch['id']}",
+                        ):
+                            del st.session_state[confirm_key]
+                            st.rerun()
+                else:
+                    if st.button(
+                        f"🗑️ {t.get('qso_batch_undo', 'Undo this upload')}",
+                        key=f"qso_undo_btn_{batch['id']}",
+                    ):
+                        st.session_state[confirm_key] = True
+                        st.rerun()
+
+
+def _get_logger():
+    """Small helper so we don't need to import logging at module top."""
+    import logging
+    return logging.getLogger(__name__)

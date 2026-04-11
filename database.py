@@ -75,6 +75,20 @@ from features.dx_cluster import (
     get_recent_spots,
 )
 
+from features.qso_log import (
+    ingest_adif_async,
+    ingest_adif_bytes,
+    parse_adif_stream,
+    export_qsos_to_adif,
+    get_qso_stats,
+    get_qsos_page,
+    count_qsos,
+    get_upload_batches,
+    delete_batch,
+    delete_all_qsos_for_award,
+    MAX_ADIF_UPLOAD_BYTES,
+)
+
 from features.chat import (
     # Chat rooms
     get_chat_rooms,
@@ -159,6 +173,18 @@ __all__ = [
     'send_spot_to_cluster',
     'log_spot',
     'get_recent_spots',
+    # Features - QSO Log
+    'ingest_adif_async',
+    'ingest_adif_bytes',
+    'parse_adif_stream',
+    'export_qsos_to_adif',
+    'get_qso_stats',
+    'get_qsos_page',
+    'count_qsos',
+    'get_upload_batches',
+    'delete_batch',
+    'delete_all_qsos_for_award',
+    'MAX_ADIF_UPLOAD_BYTES',
     # Features - Chat rooms
     'get_chat_rooms',
     'create_chat_room',

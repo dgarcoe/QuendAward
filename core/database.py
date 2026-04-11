@@ -248,6 +248,66 @@ def _create_tables(cursor):
         )
     ''')
 
+    # QSO upload batches: one row per uploaded ADIF file.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS qso_upload_batch (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            award_id INTEGER NOT NULL,
+            operator_callsign TEXT NOT NULL,
+            filename TEXT,
+            parsed INTEGER DEFAULT 0,
+            inserted INTEGER DEFAULT 0,
+            duplicates INTEGER DEFAULT 0,
+            errors INTEGER DEFAULT 0,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (award_id) REFERENCES awards (id),
+            FOREIGN KEY (operator_callsign) REFERENCES operators (callsign)
+        )
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_qso_upload_batch_award_op
+        ON qso_upload_batch(award_id, operator_callsign, uploaded_at DESC)
+    ''')
+
+    # QSO log. INSERT OR IGNORE against idx_qso_dedup gives us free
+    # deduplication at insert time - much cheaper than a pre-check query.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS qso_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            award_id INTEGER NOT NULL,
+            operator_callsign TEXT NOT NULL,
+            batch_id INTEGER,
+            call TEXT NOT NULL,
+            band TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            qso_date TEXT NOT NULL,
+            time_on TEXT NOT NULL,
+            rst_sent TEXT,
+            rst_rcvd TEXT,
+            freq REAL,
+            name TEXT,
+            qth TEXT,
+            gridsquare TEXT,
+            comment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (award_id) REFERENCES awards (id),
+            FOREIGN KEY (operator_callsign) REFERENCES operators (callsign),
+            FOREIGN KEY (batch_id) REFERENCES qso_upload_batch (id)
+        )
+    ''')
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_qso_dedup
+        ON qso_log(award_id, operator_callsign, call, band, mode, qso_date, time_on)
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_qso_award_op
+        ON qso_log(award_id, operator_callsign, qso_date DESC, time_on DESC)
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_qso_batch
+        ON qso_log(batch_id)
+    ''')
+
 
 # ---------------------------------------------------------------------------
 # Migrations
