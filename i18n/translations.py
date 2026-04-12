@@ -375,6 +375,20 @@ TRANSLATIONS = {
         'qso_scope_label': 'Scope',
         'qso_scope_own': 'My QSOs',
         'qso_scope_all': 'All operators',
+        # QSO charts
+        'qso_chart_activity': 'Activity over time',
+        'qso_chart_daily': 'Daily',
+        'qso_chart_cumulative': 'Cumulative',
+        'qso_chart_band_mode': 'QSOs by Band / Mode',
+        'qso_chart_hourly': 'Activity by hour (UTC)',
+        'qso_chart_bands': 'QSOs by Band',
+        'qso_chart_modes': 'QSOs by Mode',
+        'qso_chart_operators': 'Operator Leaderboard',
+        'qso_chart_insights': 'Insights',
+        'qso_insight_busiest_day': 'Busiest day',
+        'qso_insight_avg_daily': 'Avg QSOs/day',
+        'qso_insight_peak_hour': 'Peak hour (UTC)',
+        'qso_insight_active_days': 'Active days',
     },
     'es': {
         # General
@@ -747,6 +761,20 @@ TRANSLATIONS = {
         'qso_scope_label': 'Alcance',
         'qso_scope_own': 'Mis QSOs',
         'qso_scope_all': 'Todos los operadores',
+        # QSO charts
+        'qso_chart_activity': 'Actividad a lo largo del tiempo',
+        'qso_chart_daily': 'Diarios',
+        'qso_chart_cumulative': 'Acumulados',
+        'qso_chart_band_mode': 'QSOs por Banda / Modo',
+        'qso_chart_hourly': 'Actividad por hora (UTC)',
+        'qso_chart_bands': 'QSOs por Banda',
+        'qso_chart_modes': 'QSOs por Modo',
+        'qso_chart_operators': 'Ranking de Operadores',
+        'qso_chart_insights': 'Resumen',
+        'qso_insight_busiest_day': 'Día más activo',
+        'qso_insight_avg_daily': 'Media QSOs/día',
+        'qso_insight_peak_hour': 'Hora pico (UTC)',
+        'qso_insight_active_days': 'Días activos',
     },
     'gl': {
         # General
@@ -1119,6 +1147,20 @@ TRANSLATIONS = {
         'qso_scope_label': 'Alcance',
         'qso_scope_own': 'Os meus QSOs',
         'qso_scope_all': 'Todos os operadores',
+        # QSO charts
+        'qso_chart_activity': 'Actividade ao longo do tempo',
+        'qso_chart_daily': 'Diarios',
+        'qso_chart_cumulative': 'Acumulados',
+        'qso_chart_band_mode': 'QSOs por Banda / Modo',
+        'qso_chart_hourly': 'Actividade por hora (UTC)',
+        'qso_chart_bands': 'QSOs por Banda',
+        'qso_chart_modes': 'QSOs por Modo',
+        'qso_chart_operators': 'Ranking de Operadores',
+        'qso_chart_insights': 'Resumo',
+        'qso_insight_busiest_day': 'Día máis activo',
+        'qso_insight_avg_daily': 'Media QSOs/día',
+        'qso_insight_peak_hour': 'Hora pico (UTC)',
+        'qso_insight_active_days': 'Días activos',
     }
 }
 

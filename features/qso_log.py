@@ -389,6 +389,60 @@ def get_qso_stats(award_id: int, operator_callsign: Optional[str] = None) -> Dic
         }
 
 
+def get_qsos_by_date(
+    award_id: int, operator_callsign: Optional[str] = None
+) -> List[Dict]:
+    """QSO count per date, oldest first. For the activity timeline chart."""
+    base = "FROM qso_log WHERE award_id = ?"
+    params: List = [award_id]
+    if operator_callsign:
+        base += " AND operator_callsign = ?"
+        params.append(operator_callsign.upper())
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT qso_date, COUNT(*) AS cnt {base} "
+            "GROUP BY qso_date ORDER BY qso_date",
+            params,
+        ).fetchall()
+        return [{"date": r[0], "count": r[1]} for r in rows]
+
+
+def get_qsos_by_hour(
+    award_id: int, operator_callsign: Optional[str] = None
+) -> List[Dict]:
+    """QSO count per UTC hour (0-23). For the hourly activity chart."""
+    base = "FROM qso_log WHERE award_id = ?"
+    params: List = [award_id]
+    if operator_callsign:
+        base += " AND operator_callsign = ?"
+        params.append(operator_callsign.upper())
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT CAST(SUBSTR(time_on, 1, 2) AS INTEGER) AS hour, "
+            f"COUNT(*) AS cnt {base} GROUP BY hour ORDER BY hour",
+            params,
+        ).fetchall()
+        return [{"hour": r[0], "count": r[1]} for r in rows]
+
+
+def get_qsos_band_mode_matrix(
+    award_id: int, operator_callsign: Optional[str] = None
+) -> List[Dict]:
+    """QSO count per band/mode pair. For the band×mode heatmap."""
+    base = "FROM qso_log WHERE award_id = ?"
+    params: List = [award_id]
+    if operator_callsign:
+        base += " AND operator_callsign = ?"
+        params.append(operator_callsign.upper())
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT band, mode, COUNT(*) AS cnt {base} "
+            "GROUP BY band, mode ORDER BY cnt DESC",
+            params,
+        ).fetchall()
+        return [{"band": r[0], "mode": r[1], "count": r[2]} for r in rows]
+
+
 def get_qsos_page(
     award_id: int,
     operator_callsign: Optional[str] = None,

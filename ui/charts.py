@@ -3,6 +3,17 @@
 import plotly.graph_objects as go
 from config import BANDS, MODES, CHART_COLOR_FREE, CHART_COLOR_BLOCKED, CHART_BACKGROUND
 
+# Shared dark-mode layout defaults for QSO charts
+_QSO_LAYOUT = dict(
+    font=dict(color='white', size=11),
+    plot_bgcolor=CHART_BACKGROUND,
+    paper_bgcolor=CHART_BACKGROUND,
+    modebar=dict(remove=[
+        'zoom', 'pan', 'select', 'lasso2d', 'zoomIn2d', 'zoomOut2d',
+        'autoScale2d', 'resetScale2d', 'toImage',
+    ]),
+)
+
 
 def create_availability_heatmap(all_blocks, t):
     """
@@ -146,4 +157,326 @@ def create_blocks_by_band_chart(all_blocks, t):
         modebar=dict(remove=['zoom', 'pan', 'select', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'toImage'])
     )
 
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# QSO Log Charts
+# ---------------------------------------------------------------------------
+
+def create_qso_timeline_chart(by_date, t):
+    """Area chart of QSOs per day with cumulative overlay.
+
+    Args:
+        by_date: List of {"date": "YYYY-MM-DD", "count": int} sorted by date.
+        t: Translations dict.
+    Returns:
+        Plotly Figure.
+    """
+    if not by_date:
+        return None
+
+    dates = [r['date'] for r in by_date]
+    counts = [r['count'] for r in by_date]
+    cumulative = []
+    total = 0
+    for c in counts:
+        total += c
+        cumulative.append(total)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=dates, y=counts,
+        name=t.get('qso_chart_daily', 'Daily'),
+        marker_color='#4FC3F7',
+    ))
+    fig.add_trace(go.Scatter(
+        x=dates, y=cumulative,
+        name=t.get('qso_chart_cumulative', 'Cumulative'),
+        mode='lines',
+        line=dict(color='#FFD54F', width=2),
+        yaxis='y2',
+    ))
+    fig.update_layout(
+        **_QSO_LAYOUT,
+        height=300,
+        margin=dict(l=50, r=50, t=30, b=40),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        xaxis=dict(tickfont=dict(color='white'), fixedrange=True),
+        yaxis=dict(
+            title=t.get('qso_chart_daily', 'Daily'),
+            tickfont=dict(color='white'), title_font=dict(color='#4FC3F7'),
+            fixedrange=True,
+        ),
+        yaxis2=dict(
+            title=t.get('qso_chart_cumulative', 'Cumulative'),
+            overlaying='y', side='right',
+            tickfont=dict(color='#FFD54F'), title_font=dict(color='#FFD54F'),
+            fixedrange=True,
+        ),
+        bargap=0.15,
+    )
+    return fig
+
+
+def create_qso_band_mode_heatmap(matrix, t):
+    """Heatmap of QSO count per band x mode cell.
+
+    Args:
+        matrix: List of {"band": str, "mode": str, "count": int}.
+        t: Translations dict.
+    Returns:
+        Plotly Figure.
+    """
+    if not matrix:
+        return None
+
+    # Build lookup
+    lookup = {}
+    for r in matrix:
+        lookup[(r['band'], r['mode'])] = r['count']
+
+    # Collect only bands/modes that have data (keep config order)
+    active_bands = [b for b in BANDS if any((b, m) in lookup for m in MODES)]
+    all_modes_in_data = {r['mode'] for r in matrix}
+    active_modes = [m for m in MODES if m in all_modes_in_data]
+    # Add any extra modes from the data that aren't in MODES config
+    extra_modes = sorted(all_modes_in_data - set(MODES))
+    active_modes.extend(extra_modes)
+
+    # Also add bands from data not in config order
+    data_bands = {r['band'] for r in matrix}
+    extra_bands = sorted(data_bands - set(BANDS))
+    active_bands.extend(extra_bands)
+
+    if not active_bands or not active_modes:
+        return None
+
+    z_values = []
+    text_values = []
+    for band in active_bands:
+        z_row = []
+        text_row = []
+        for mode in active_modes:
+            cnt = lookup.get((band, mode), 0)
+            z_row.append(cnt if cnt > 0 else None)
+            text_row.append(str(cnt) if cnt > 0 else '')
+        z_values.append(z_row)
+        text_values.append(text_row)
+
+    fig = go.Figure(data=go.Heatmap(
+        z=z_values,
+        x=active_modes,
+        y=active_bands,
+        text=text_values,
+        texttemplate='%{text}',
+        textfont=dict(size=12, color='white'),
+        colorscale=[
+            [0.0, '#1a237e'],
+            [0.25, '#1565c0'],
+            [0.5, '#42a5f5'],
+            [0.75, '#ffb74d'],
+            [1.0, '#ff5722'],
+        ],
+        hovertemplate='%{y} / %{x}: %{z} QSOs<extra></extra>',
+        showscale=True,
+        colorbar=dict(
+            title=dict(text='QSOs', font=dict(color='white')),
+            tickfont=dict(color='white'),
+        ),
+        xgap=2,
+        ygap=2,
+    ))
+
+    fig.update_layout(
+        **_QSO_LAYOUT,
+        height=max(200, len(active_bands) * 35 + 80),
+        margin=dict(l=60, r=10, t=30, b=40),
+        xaxis=dict(
+            side='top', tickfont=dict(color='white'),
+            title_font=dict(color='white'), fixedrange=True,
+        ),
+        yaxis=dict(
+            tickfont=dict(color='white'), title_font=dict(color='white'),
+            fixedrange=True, autorange='reversed',
+        ),
+    )
+    return fig
+
+
+def create_qso_hourly_chart(by_hour, t):
+    """Bar chart of QSOs per UTC hour (0-23).
+
+    Args:
+        by_hour: List of {"hour": int, "count": int}.
+        t: Translations dict.
+    Returns:
+        Plotly Figure.
+    """
+    if not by_hour:
+        return None
+
+    hour_counts = {r['hour']: r['count'] for r in by_hour}
+    hours = list(range(24))
+    counts = [hour_counts.get(h, 0) for h in hours]
+    labels = [f"{h:02d}" for h in hours]
+
+    # Color gradient: darker for low activity, brighter for high
+    max_cnt = max(counts) if counts else 1
+    colors = [
+        f'rgba(79, 195, 247, {0.3 + 0.7 * (c / max_cnt)})' if c > 0
+        else 'rgba(79, 195, 247, 0.1)'
+        for c in counts
+    ]
+
+    fig = go.Figure(data=go.Bar(
+        x=labels, y=counts,
+        marker_color=colors,
+        hovertemplate='%{x}:00 UTC: %{y} QSOs<extra></extra>',
+    ))
+    fig.update_layout(
+        **_QSO_LAYOUT,
+        height=250,
+        margin=dict(l=40, r=10, t=30, b=40),
+        xaxis=dict(
+            title='UTC',
+            tickfont=dict(color='white'), title_font=dict(color='white'),
+            fixedrange=True, dtick=2,
+        ),
+        yaxis=dict(
+            tickfont=dict(color='white'), title_font=dict(color='white'),
+            fixedrange=True,
+        ),
+    )
+    return fig
+
+
+def create_qso_band_chart(by_band, t):
+    """Horizontal bar chart of QSOs per band (in BANDS config order).
+
+    Args:
+        by_band: Dict[str, int] band -> count.
+        t: Translations dict.
+    Returns:
+        Plotly Figure.
+    """
+    if not by_band:
+        return None
+
+    # Show only bands that have data, in config order
+    ordered = [(b, by_band[b]) for b in BANDS if b in by_band]
+    # Add any extra bands not in config
+    config_set = set(BANDS)
+    for b, cnt in sorted(by_band.items()):
+        if b not in config_set:
+            ordered.append((b, cnt))
+
+    if not ordered:
+        return None
+
+    bands = [o[0] for o in ordered]
+    counts = [o[1] for o in ordered]
+
+    fig = go.Figure(data=go.Bar(
+        x=counts, y=bands,
+        orientation='h',
+        marker_color='#4FC3F7',
+        text=counts,
+        textposition='outside',
+        textfont=dict(color='white', size=11),
+        hovertemplate='%{y}: %{x} QSOs<extra></extra>',
+    ))
+    fig.update_layout(
+        **_QSO_LAYOUT,
+        height=max(200, len(bands) * 28 + 60),
+        margin=dict(l=55, r=40, t=10, b=10),
+        xaxis=dict(
+            tickfont=dict(color='white'), fixedrange=True,
+            showgrid=False,
+        ),
+        yaxis=dict(
+            tickfont=dict(color='white'), fixedrange=True,
+            autorange='reversed',
+        ),
+    )
+    return fig
+
+
+def create_qso_mode_chart(by_mode, t):
+    """Donut chart of QSOs per mode.
+
+    Args:
+        by_mode: Dict[str, int] mode -> count.
+        t: Translations dict.
+    Returns:
+        Plotly Figure.
+    """
+    if not by_mode:
+        return None
+
+    modes = list(by_mode.keys())
+    counts = list(by_mode.values())
+
+    colors = [
+        '#4FC3F7', '#FFD54F', '#81C784', '#FF8A65',
+        '#BA68C8', '#4DB6AC', '#E57373', '#90A4AE',
+        '#AED581', '#FFB74D',
+    ]
+
+    fig = go.Figure(data=go.Pie(
+        labels=modes, values=counts,
+        hole=0.45,
+        marker=dict(colors=colors[:len(modes)]),
+        textinfo='label+percent',
+        textfont=dict(color='white', size=12),
+        hovertemplate='%{label}: %{value} QSOs (%{percent})<extra></extra>',
+    ))
+    fig.update_layout(
+        **_QSO_LAYOUT,
+        height=280,
+        margin=dict(l=10, r=10, t=10, b=10),
+        showlegend=False,
+    )
+    return fig
+
+
+def create_qso_operator_chart(by_operator, t):
+    """Horizontal bar chart showing QSO count per operator (leaderboard).
+
+    Args:
+        by_operator: Dict[str, int] callsign -> count, sorted by count desc.
+        t: Translations dict.
+    Returns:
+        Plotly Figure.
+    """
+    if not by_operator:
+        return None
+
+    # Top 15 operators
+    items = list(by_operator.items())[:15]
+    # Reverse for horizontal bar (bottom-up display)
+    callsigns = [i[0] for i in reversed(items)]
+    counts = [i[1] for i in reversed(items)]
+
+    fig = go.Figure(data=go.Bar(
+        x=counts, y=callsigns,
+        orientation='h',
+        marker_color='#FFD54F',
+        text=counts,
+        textposition='outside',
+        textfont=dict(color='white', size=11),
+        hovertemplate='%{y}: %{x} QSOs<extra></extra>',
+    ))
+    fig.update_layout(
+        **_QSO_LAYOUT,
+        height=max(200, len(callsigns) * 28 + 60),
+        margin=dict(l=80, r=40, t=10, b=10),
+        xaxis=dict(
+            tickfont=dict(color='white'), fixedrange=True,
+            showgrid=False,
+        ),
+        yaxis=dict(
+            tickfont=dict(color='white'), fixedrange=True,
+        ),
+    )
     return fig

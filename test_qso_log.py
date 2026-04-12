@@ -234,6 +234,84 @@ def run_tests():
     assert sub_row['mode'] == 'FT8', f"Expected submode FT8, got {sub_row['mode']}"
     print("[OK] SUBMODE handling works\n")
 
+    print("19. Testing by-date aggregation query...")
+    by_date = qso_log.get_qsos_by_date(award_id, operator_callsign="EA4TEST")
+    assert len(by_date) > 0, "Expected at least 1 date bucket"
+    # All our test QSOs span 2026-01-01, 2026-01-02, 2026-01-04
+    dates = [r['date'] for r in by_date]
+    assert '2026-01-01' in dates, f"Missing 2026-01-01 in {dates}"
+    total_from_dates = sum(r['count'] for r in by_date)
+    expected = db.count_qsos(award_id, operator_callsign="EA4TEST")
+    assert total_from_dates == expected, f"Sum mismatch: {total_from_dates} vs {expected}"
+    # Sorted ascending
+    assert dates == sorted(dates), f"Not sorted ascending: {dates}"
+    print(f"[OK] by_date: {len(by_date)} date buckets, total={total_from_dates}\n")
+
+    print("20. Testing by-hour aggregation query...")
+    by_hour = qso_log.get_qsos_by_hour(award_id, operator_callsign="EA4TEST")
+    assert len(by_hour) > 0, "Expected at least 1 hour bucket"
+    hours = [r['hour'] for r in by_hour]
+    # SAMPLE_ADIF has time_on 15:30, 15:35, 16:00, 16:20, 17:00 -> hours 15, 16, 17
+    assert 15 in hours, f"Missing hour 15 in {hours}"
+    assert 16 in hours, f"Missing hour 16 in {hours}"
+    total_from_hours = sum(r['count'] for r in by_hour)
+    assert total_from_hours == expected, f"Hour sum mismatch: {total_from_hours} vs {expected}"
+    print(f"[OK] by_hour: {len(by_hour)} hour buckets\n")
+
+    print("21. Testing band-mode matrix aggregation...")
+    matrix = qso_log.get_qsos_band_mode_matrix(award_id, operator_callsign="EA4TEST")
+    assert len(matrix) > 0, "Expected at least 1 band/mode pair"
+    # Check that 20m/CW is present (EA1ABC, DL2XYZ, GOOD01)
+    bm_lookup = {(r['band'], r['mode']): r['count'] for r in matrix}
+    assert ('20m', 'CW') in bm_lookup, f"Missing 20m/CW in matrix"
+    assert bm_lookup[('20m', 'CW')] >= 2, f"Expected >= 2 for 20m/CW: {bm_lookup[('20m', 'CW')]}"
+    total_from_matrix = sum(r['count'] for r in matrix)
+    assert total_from_matrix == expected, f"Matrix sum mismatch: {total_from_matrix} vs {expected}"
+    print(f"[OK] band-mode matrix: {len(matrix)} pairs\n")
+
+    print("22. Testing chart creation functions (non-crash)...")
+    try:
+        # Import charts directly (not through ui package which pulls in streamlit)
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location("charts", "ui/charts.py")
+        _charts = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_charts)
+        create_qso_timeline_chart = _charts.create_qso_timeline_chart
+        create_qso_band_mode_heatmap = _charts.create_qso_band_mode_heatmap
+        create_qso_hourly_chart = _charts.create_qso_hourly_chart
+        create_qso_band_chart = _charts.create_qso_band_chart
+        create_qso_mode_chart = _charts.create_qso_mode_chart
+        create_qso_operator_chart = _charts.create_qso_operator_chart
+        t_en = {'qso_chart_daily': 'Daily', 'qso_chart_cumulative': 'Cumulative'}
+        stats = qso_log.get_qso_stats(award_id, operator_callsign="EA4TEST")
+        fig1 = create_qso_timeline_chart(by_date, t_en)
+        assert fig1 is not None, "Timeline chart should not be None"
+        fig2 = create_qso_band_mode_heatmap(matrix, t_en)
+        assert fig2 is not None, "Band-mode heatmap should not be None"
+        fig3 = create_qso_hourly_chart(by_hour, t_en)
+        assert fig3 is not None, "Hourly chart should not be None"
+        fig4 = create_qso_band_chart(stats['by_band'], t_en)
+        assert fig4 is not None, "Band chart should not be None"
+        fig5 = create_qso_mode_chart(stats['by_mode'], t_en)
+        assert fig5 is not None, "Mode chart should not be None"
+        # Empty data should return None
+        assert create_qso_timeline_chart([], t_en) is None
+        assert create_qso_band_mode_heatmap([], t_en) is None
+        assert create_qso_hourly_chart([], t_en) is None
+        assert create_qso_band_chart({}, t_en) is None
+        assert create_qso_mode_chart({}, t_en) is None
+        assert create_qso_operator_chart({}, t_en) is None
+        print("[OK] All chart functions produce valid Plotly figures\n")
+
+        print("23. Testing operator chart (admin scope)...")
+        all_stats = qso_log.get_qso_stats(award_id, operator_callsign=None)
+        assert len(all_stats['by_operator']) >= 2, f"Expected >=2 operators: {all_stats['by_operator']}"
+        fig_ops = create_qso_operator_chart(all_stats['by_operator'], t_en)
+        assert fig_ops is not None, "Operator chart should not be None"
+        print(f"[OK] Operator chart with {len(all_stats['by_operator'])} operators\n")
+    except ImportError as e:
+        print(f"[SKIP] Chart tests skipped (missing dependency: {e})\n")
+
     print("=" * 50)
     print("All QSO log tests passed successfully!")
     print("=" * 50)

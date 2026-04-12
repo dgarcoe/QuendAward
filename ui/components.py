@@ -567,41 +567,128 @@ def render_qso_log_tab(t, award_id, operator_callsign, is_admin=False):
 
     st.divider()
 
-    # --- Stats
+    # --- Stats + Charts
     stats = db.get_qso_stats(award_id, operator_callsign=scoped_operator)
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(t.get('qso_total', 'Total QSOs'), stats['total'])
-    with col2:
-        st.metric(t.get('qso_unique_calls', 'Unique Calls'), stats['unique_calls'])
-    with col3:
-        top_band = next(iter(stats['by_band']), None) if stats['by_band'] else None
-        st.metric(
-            t.get('qso_top_band', 'Top Band'),
-            top_band if top_band else "—",
+
+    if stats['total'] == 0:
+        st.info(t.get('qso_no_qsos', 'No QSOs uploaded yet.'))
+    else:
+        _render_qso_charts(t, award_id, scoped_operator, stats)
+        st.divider()
+        # --- Filters + paginated log view
+        _render_qso_log_view(
+            t, award_id, scoped_operator, award_name, stats['total']
         )
-
-    if stats['by_band'] or stats['by_mode']:
-        bcol, mcol = st.columns(2)
-        with bcol:
-            st.caption(t.get('qso_by_band', 'By Band'))
-            for band, cnt in stats['by_band'].items():
-                st.write(f"**{band}** — {cnt}")
-        with mcol:
-            st.caption(t.get('qso_by_mode', 'By Mode'))
-            for mode, cnt in stats['by_mode'].items():
-                st.write(f"**{mode}** — {cnt}")
-
-    st.divider()
-
-    # --- Filters + paginated log view
-    _render_qso_log_view(
-        t, award_id, scoped_operator, award_name, stats['total']
-    )
 
     # --- Upload history (own batches, undo)
     st.divider()
     _render_qso_batches_section(t, award_id, operator_callsign, is_admin)
+
+
+def _render_qso_charts(t, award_id, scoped_operator, stats):
+    """Render QSO statistics as visual charts and insight metrics."""
+    from ui.charts import (
+        create_qso_timeline_chart,
+        create_qso_band_mode_heatmap,
+        create_qso_hourly_chart,
+        create_qso_band_chart,
+        create_qso_mode_chart,
+        create_qso_operator_chart,
+    )
+
+    # --- Top-level metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric(t.get('qso_total', 'Total QSOs'), f"{stats['total']:,}")
+    with col2:
+        st.metric(t.get('qso_unique_calls', 'Unique Calls'), f"{stats['unique_calls']:,}")
+    with col3:
+        top_band = next(iter(stats['by_band']), None) if stats['by_band'] else None
+        st.metric(t.get('qso_top_band', 'Top Band'), top_band or "—")
+    with col4:
+        top_mode = next(iter(stats['by_mode']), None) if stats['by_mode'] else None
+        st.metric(
+            t.get('qso_chart_modes', 'Top Mode'),
+            top_mode or "—",
+        )
+
+    # --- Fetch chart data
+    by_date = db.get_qsos_by_date(award_id, operator_callsign=scoped_operator)
+    by_hour = db.get_qsos_by_hour(award_id, operator_callsign=scoped_operator)
+    bm_matrix = db.get_qsos_band_mode_matrix(award_id, operator_callsign=scoped_operator)
+
+    # --- Insights row (computed from by_date and by_hour)
+    if by_date:
+        busiest = max(by_date, key=lambda r: r['count'])
+        avg_daily = stats['total'] / len(by_date) if by_date else 0
+        peak_hour_row = max(by_hour, key=lambda r: r['count']) if by_hour else None
+        peak_hour_str = f"{peak_hour_row['hour']:02d}:00" if peak_hour_row else "—"
+
+        ic1, ic2, ic3, ic4 = st.columns(4)
+        with ic1:
+            st.metric(
+                t.get('qso_insight_busiest_day', 'Busiest day'),
+                busiest['date'],
+                f"{busiest['count']} QSOs",
+            )
+        with ic2:
+            st.metric(
+                t.get('qso_insight_avg_daily', 'Avg QSOs/day'),
+                f"{avg_daily:.1f}",
+            )
+        with ic3:
+            st.metric(
+                t.get('qso_insight_peak_hour', 'Peak hour (UTC)'),
+                peak_hour_str,
+                f"{peak_hour_row['count']} QSOs" if peak_hour_row else "",
+            )
+        with ic4:
+            st.metric(
+                t.get('qso_insight_active_days', 'Active days'),
+                str(len(by_date)),
+            )
+
+    # --- Timeline chart: daily QSOs + cumulative line
+    if by_date and len(by_date) > 1:
+        st.caption(t.get('qso_chart_activity', 'Activity over time'))
+        fig_timeline = create_qso_timeline_chart(by_date, t)
+        if fig_timeline:
+            st.plotly_chart(fig_timeline, use_container_width=True)
+
+    # --- Band × Mode heatmap
+    if bm_matrix:
+        st.caption(t.get('qso_chart_band_mode', 'QSOs by Band / Mode'))
+        fig_bm = create_qso_band_mode_heatmap(bm_matrix, t)
+        if fig_bm:
+            st.plotly_chart(fig_bm, use_container_width=True)
+
+    # --- Two-column row: band bar chart + mode donut
+    if stats['by_band'] or stats['by_mode']:
+        bcol, mcol = st.columns(2)
+        with bcol:
+            st.caption(t.get('qso_chart_bands', 'QSOs by Band'))
+            fig_band = create_qso_band_chart(stats['by_band'], t)
+            if fig_band:
+                st.plotly_chart(fig_band, use_container_width=True)
+        with mcol:
+            st.caption(t.get('qso_chart_modes', 'QSOs by Mode'))
+            fig_mode = create_qso_mode_chart(stats['by_mode'], t)
+            if fig_mode:
+                st.plotly_chart(fig_mode, use_container_width=True)
+
+    # --- Hourly activity chart
+    if by_hour:
+        st.caption(t.get('qso_chart_hourly', 'Activity by hour (UTC)'))
+        fig_hourly = create_qso_hourly_chart(by_hour, t)
+        if fig_hourly:
+            st.plotly_chart(fig_hourly, use_container_width=True)
+
+    # --- Operator leaderboard (only in all-operators scope)
+    if not scoped_operator and stats.get('by_operator'):
+        st.caption(t.get('qso_chart_operators', 'Operator Leaderboard'))
+        fig_ops = create_qso_operator_chart(stats['by_operator'], t)
+        if fig_ops:
+            st.plotly_chart(fig_ops, use_container_width=True)
 
 
 def _render_qso_upload_section(t, award_id, operator_callsign, award_name):
