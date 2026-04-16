@@ -328,6 +328,7 @@ TRANSLATIONS = {
         'dx_spot_error': 'Error sending spot',
         'dx_recent_spots': 'Recent Spots',
         'dx_fill_required': 'Please fill in the spotted callsign.',
+        'dx_frequency_required': 'Please enter a frequency.',
         'dx_no_block_warning': 'You must block a band/mode before sending a spot.',
         'dx_cluster_not_configured': 'DX Cluster not configured. Set DX_CLUSTER_HOST and DX_CLUSTER_CALLSIGN environment variables.',
 
@@ -756,6 +757,7 @@ TRANSLATIONS = {
         'dx_spot_error': 'Error al enviar el spot',
         'dx_recent_spots': 'Spots Recientes',
         'dx_fill_required': 'Por favor complete el indicativo spotteado.',
+        'dx_frequency_required': 'Por favor introduce una frecuencia.',
         'dx_no_block_warning': 'Debes bloquear una banda/modo antes de enviar un spot.',
         'dx_cluster_not_configured': 'DX Cluster no configurado. Establece las variables de entorno DX_CLUSTER_HOST y DX_CLUSTER_CALLSIGN.',
 
@@ -1184,6 +1186,7 @@ TRANSLATIONS = {
         'dx_spot_error': 'Erro ao enviar o spot',
         'dx_recent_spots': 'Spots Recentes',
         'dx_fill_required': 'Por favor complete o indicativo spotteado.',
+        'dx_frequency_required': 'Por favor introduce unha frecuencia.',
         'dx_no_block_warning': 'Debes bloquear unha banda/modo antes de enviar un spot.',
         'dx_cluster_not_configured': 'DX Cluster non configurado. Establece as variables de contorno DX_CLUSTER_HOST e DX_CLUSTER_CALLSIGN.',
 

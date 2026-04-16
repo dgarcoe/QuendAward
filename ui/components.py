@@ -239,8 +239,9 @@ def _render_dx_cluster_spot_section(t, award_id, callsign):
     Render the DX Cluster spotting section below the heatmap.
 
     Operators can send spots only when they have an active block.
-    Band/mode are autofilled from the block; frequency and comment are manual.
-    Cluster connection settings come from environment variables.
+    Band/mode are autofilled from the block; frequency, spotted callsign,
+    and comment are entered manually. Cluster connection settings come from
+    environment variables.
 
     Args:
         t: Translations dictionary
@@ -249,7 +250,7 @@ def _render_dx_cluster_spot_section(t, award_id, callsign):
     """
     from config import (
         DX_CLUSTER_HOST, DX_CLUSTER_PORT, DX_CLUSTER_CALLSIGN,
-        DX_CLUSTER_PASSWORD, BAND_FREQUENCIES,
+        DX_CLUSTER_PASSWORD,
     )
 
     if not callsign or not award_id:
@@ -295,11 +296,10 @@ def _render_dx_cluster_spot_section(t, award_id, callsign):
                 key="dx_input_spotted_cs",
             ).upper().strip()
 
-            # Frequency (manual input, default from band/mode mapping)
-            default_freq = BAND_FREQUENCIES.get(blocked_band, {}).get(blocked_mode, 14000.0)
+            # Frequency (manual input)
             frequency = st.number_input(
                 t.get('dx_frequency', 'Frequency (kHz)'),
-                value=default_freq,
+                value=None,
                 min_value=0.1,
                 max_value=999999.9,
                 step=0.1,
@@ -310,7 +310,7 @@ def _render_dx_cluster_spot_section(t, award_id, callsign):
             # Comment
             comment = st.text_input(
                 t.get('dx_comment', 'Comment'),
-                value=f"QRV {blocked_mode}",
+                value="",
                 max_chars=30,
                 help=t.get('dx_comment_help', 'Max 30 characters'),
                 key="dx_input_comment",
@@ -322,6 +322,8 @@ def _render_dx_cluster_spot_section(t, award_id, callsign):
                     st.error(t.get('dx_cluster_not_configured', 'DX Cluster not configured. Set DX_CLUSTER_HOST and DX_CLUSTER_CALLSIGN environment variables.'))
                 elif not spotted_callsign:
                     st.error(t.get('dx_fill_required', 'Please fill in the spotted callsign.'))
+                elif frequency is None:
+                    st.error(t.get('dx_frequency_required', 'Please enter a frequency.'))
                 else:
                     from features.dx_cluster import send_spot_async, log_spot
                     # Kick off the telnet send on a worker thread so the
