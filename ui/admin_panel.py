@@ -196,6 +196,8 @@ def render_manage_blocks_tab(t):
                         admin_callsign=st.session_state.get('callsign', '')
                     )
                     if success:
+                        _cached_all_blocks.clear()
+                        st.session_state.pop('_blocks_fingerprint', None)
                         st.success(message)
                         st.rerun()
                     else:

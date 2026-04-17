@@ -39,6 +39,8 @@ def _show_block_modal(t, callsign, band, mode, award_id):
                 )
                 if success:
                     st.success(message)
+                    _cached_all_blocks.clear()
+                    st.session_state.pop('_blocks_fingerprint', None)
                     st.session_state._click_version = st.session_state.get('_click_version', 0) + 1
                     st.rerun()
                 else:
@@ -73,6 +75,8 @@ def _show_unblock_modal(t, callsign, band, mode, award_id):
                 success, message = db.unblock_band_mode(callsign, band, mode, award_id)
                 if success:
                     st.success(message)
+                    _cached_all_blocks.clear()
+                    st.session_state.pop('_blocks_fingerprint', None)
                     st.session_state._click_version = st.session_state.get('_click_version', 0) + 1
                     st.rerun()
                 else:
@@ -209,6 +213,8 @@ def render_block_unblock_section(t, callsign, award_id):
         )
         if success:
             st.success(message)
+            _cached_all_blocks.clear()
+            st.session_state.pop('_blocks_fingerprint', None)
             st.rerun()
         else:
             st.error(message)
@@ -231,6 +237,8 @@ def render_block_unblock_section(t, callsign, award_id):
                     success, message = db.unblock_band_mode(callsign, block['band'], block['mode'], award_id)
                     if success:
                         st.success(message)
+                        _cached_all_blocks.clear()
+                        st.session_state.pop('_blocks_fingerprint', None)
                         st.rerun()
                     else:
                         st.error(message)
@@ -1230,6 +1238,8 @@ def render_manage_award_tab(t, callsign, is_admin=False):
                         b['band'], b['mode'], award_id, admin_callsign=callsign,
                     )
                     if ok:
+                        _cached_all_blocks.clear()
+                        st.session_state.pop('_blocks_fingerprint', None)
                         st.success(msg)
                         st.rerun()
                     else:

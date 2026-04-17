@@ -99,6 +99,7 @@ def _cached_texts(language: str):
     return get_all_texts(language)
 
 
+@st.cache_data(ttl=5, show_spinner=False)
 def _get_notification_summary(callsign: str, show_announcements: bool, show_chat: bool):
     """Fetch all bell/notification state in a single connection.
 
