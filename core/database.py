@@ -372,10 +372,8 @@ def _create_tables(cursor):
         CREATE INDEX IF NOT EXISTS idx_qso_award_op
         ON qso_log(award_id, operator_callsign, qso_date DESC, time_on DESC)
     ''')
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_qso_batch
-        ON qso_log(batch_id)
-    ''')
+    # idx_qso_batch is created in _migrate_qso_log_batch_id to avoid
+    # failure when batch_id column doesn't exist in old databases.
     cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_qso_log_award_band_mode
         ON qso_log(award_id, band, mode)
@@ -397,6 +395,7 @@ def _run_migrations(cursor, conn):
     _migrate_chat_messages_room_id(cursor)
     _migrate_chat_notifications_room_id(cursor)
     _migrate_chat_messages_system_source(cursor)
+    _migrate_qso_log_batch_id(cursor)
 
     # Create app_settings key-value table
     cursor.execute('''
@@ -546,6 +545,16 @@ def _migrate_chat_messages_system_source(cursor):
         "UPDATE chat_messages SET source = 'system' "
         "WHERE operator_callsign = 'SYSTEM' AND source != 'system'"
     )
+
+
+def _migrate_qso_log_batch_id(cursor):
+    """Add batch_id column to qso_log if missing (old databases pre-ADIF upload)."""
+    if 'batch_id' not in _get_column_names(cursor, 'qso_log'):
+        cursor.execute('ALTER TABLE qso_log ADD COLUMN batch_id INTEGER REFERENCES qso_upload_batch(id)')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_qso_batch
+        ON qso_log(batch_id)
+    ''')
 
 
 # ---------------------------------------------------------------------------
