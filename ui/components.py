@@ -416,17 +416,6 @@ def render_activity_dashboard(t, award_id, callsign=None):
 
     all_blocks = _cached_all_blocks(award_id)
 
-    # Show summary statistics first (renders instantly, gives immediate feedback)
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(t['total_blocks_label'], len(all_blocks))
-    with col2:
-        unique_operators = set(block['operator_callsign'] for block in all_blocks)
-        st.metric(t['active_operators_label'], len(unique_operators))
-    with col3:
-        unique_bands = set(block['band'] for block in all_blocks)
-        st.metric(t['bands_in_use_label'], len(unique_bands))
-
     # Skip the Plotly rebuild if nothing has actually changed since the last
     # fragment tick. Rebuilding the heatmap allocates ~90 annotation objects
     # for a 15x6 grid, which is wasted work every 5 seconds when idle.
@@ -501,6 +490,17 @@ def render_activity_dashboard(t, award_id, callsign=None):
         else:
             # Cell is free - show block modal
             _show_block_modal(t, callsign, clicked_band, clicked_mode, award_id)
+
+    # Summary statistics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(t['total_blocks_label'], len(all_blocks))
+    with col2:
+        unique_operators = set(block['operator_callsign'] for block in all_blocks)
+        st.metric(t['active_operators_label'], len(unique_operators))
+    with col3:
+        unique_bands = set(block['band'] for block in all_blocks)
+        st.metric(t['bands_in_use_label'], len(unique_bands))
 
     # DX Cluster spotting section
     _render_dx_cluster_spot_section(t, award_id, callsign)
