@@ -563,6 +563,18 @@ def delete_all_qsos_for_award(award_id: int) -> int:
         return deleted
 
 
+def delete_qsos_by_ids(qso_ids: List[int]) -> int:
+    """Delete specific QSOs by their IDs. Returns count of deleted rows."""
+    if not qso_ids:
+        return 0
+    placeholders = ','.join('?' for _ in qso_ids)
+    with get_db() as conn:
+        return conn.execute(
+            f"DELETE FROM qso_log WHERE id IN ({placeholders})",
+            qso_ids,
+        ).rowcount
+
+
 # ---------------------------------------------------------------------------
 # ADIF export
 # ---------------------------------------------------------------------------

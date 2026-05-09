@@ -738,7 +738,8 @@ def render_qso_log_tab(t, award_id, operator_callsign, is_admin=False):
         st.divider()
         # --- Filters + paginated log view
         _render_qso_log_view(
-            t, award_id, scoped_operator, award_name, stats['total']
+            t, award_id, scoped_operator, award_name, stats['total'],
+            is_admin=is_admin,
         )
 
     # --- Upload history (own batches, undo)
@@ -947,7 +948,7 @@ def _render_qso_upload_section(t, award_id, operator_callsign, award_name):
 
 
 def _render_qso_log_view(
-    t, award_id, scoped_operator, award_name, total_count
+    t, award_id, scoped_operator, award_name, total_count, is_admin=False,
 ):
     """Filtered + paginated log view with ADIF export button."""
     from config import BANDS, MODES
@@ -1019,7 +1020,9 @@ def _render_qso_log_view(
     )
 
     if qsos:
+        import pandas as pd
         display_rows = []
+        qso_ids = []
         for q in qsos:
             row = {
                 t.get('qso_col_date', 'Date'): q.get('qso_date', ''),
@@ -1033,11 +1036,52 @@ def _render_qso_log_view(
             if scoped_operator is None:
                 row[t.get('qso_col_op', 'Op')] = q.get('operator_callsign', '')
             display_rows.append(row)
-        st.dataframe(
-            display_rows,
-            use_container_width=True,
-            hide_index=True,
-        )
+            qso_ids.append(q['id'])
+
+        df = pd.DataFrame(display_rows)
+
+        if is_admin:
+            event = st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                on_select="rerun",
+                selection_mode="multi-row",
+                key=f"qso_df_{award_id}_{band_filter}_{mode_filter}_{page}",
+            )
+            selected_indices = event.selection.rows if event.selection else []
+            if selected_indices:
+                selected_ids = [qso_ids[i] for i in selected_indices]
+                n = len(selected_ids)
+                st.warning(
+                    t.get(
+                        'qso_delete_confirm',
+                        '⚠️ {count} QSO(s) selected for deletion.'
+                    ).format(count=n)
+                )
+                if st.button(
+                    f"🗑️ {t.get('qso_delete_btn', 'Delete selected QSOs')}",
+                    type="primary",
+                    key=f"qso_del_{award_id}_{page}",
+                ):
+                    deleted = db.delete_qsos_by_ids(selected_ids)
+                    _cached_qso_stats.clear()
+                    _cached_qsos_by_date.clear()
+                    _cached_qsos_by_hour.clear()
+                    _cached_qsos_band_mode_matrix.clear()
+                    st.success(
+                        t.get(
+                            'qso_deleted_ok',
+                            '✅ {count} QSO(s) deleted.'
+                        ).format(count=deleted)
+                    )
+                    st.rerun()
+        else:
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+            )
 
         # ADIF export: pull everything matching the current filter, not just
         # the visible page. Capped at 50k to avoid runaway downloads.
