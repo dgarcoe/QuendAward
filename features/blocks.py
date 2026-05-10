@@ -313,8 +313,10 @@ def get_operator_blocks(operator_callsign: str, award_id: Optional[int] = None) 
 # Block history queries
 # ---------------------------------------------------------------------------
 
-def get_activation_stats(award_id: int) -> dict:
+def get_activation_stats(award_id: int, start_date: str = None, end_date: str = None) -> dict:
     """Aggregate activation statistics for an award.
+
+    start_date/end_date filter by blocked_at date (YYYY-MM-DD).
 
     Returns dict with:
       - total_activations: int
@@ -330,6 +332,12 @@ def get_activation_stats(award_id: int) -> dict:
         c = conn.cursor()
         base = "FROM block_history WHERE award_id = ? AND duration_seconds IS NOT NULL"
         params = [award_id]
+        if start_date:
+            base += " AND DATE(blocked_at) >= ?"
+            params.append(start_date)
+        if end_date:
+            base += " AND DATE(blocked_at) <= ?"
+            params.append(end_date)
 
         # Totals
         row = c.execute(
@@ -389,13 +397,21 @@ def get_activation_stats(award_id: int) -> dict:
             by_hour.append({'hour': r[0], 'activations': r[1]})
 
         # Recent completed activations
+        recent_where = "WHERE award_id = ? AND unblocked_at IS NOT NULL"
+        recent_params: list = [award_id]
+        if start_date:
+            recent_where += " AND DATE(blocked_at) >= ?"
+            recent_params.append(start_date)
+        if end_date:
+            recent_where += " AND DATE(blocked_at) <= ?"
+            recent_params.append(end_date)
         recent = []
         for r in c.execute(
             "SELECT operator_callsign, band, mode, blocked_at, "
             "unblocked_at, duration_seconds "
-            "FROM block_history WHERE award_id = ? AND unblocked_at IS NOT NULL "
+            f"FROM block_history {recent_where} "
             "ORDER BY unblocked_at DESC LIMIT 20",
-            [award_id],
+            recent_params,
         ):
             recent.append(dict(r))
 

@@ -518,37 +518,44 @@ def _cached_all_blocks(award_id):
 
 
 @st.cache_data(ttl=20, show_spinner=False)
-def _cached_activation_stats(award_id):
-    return db.get_activation_stats(award_id)
+def _cached_activation_stats(award_id, start_date=None, end_date=None):
+    return db.get_activation_stats(award_id, start_date=start_date, end_date=end_date)
 
 
 @st.cache_data(ttl=20, show_spinner=False)
-def _cached_qso_stats(award_id, operator_callsign):
-    return db.get_qso_stats(award_id, operator_callsign=operator_callsign)
+def _cached_qso_stats(award_id, operator_callsign, start_date=None, end_date=None):
+    return db.get_qso_stats(award_id, operator_callsign=operator_callsign,
+                            start_date=start_date, end_date=end_date)
 
 
 @st.cache_data(ttl=20, show_spinner=False)
-def _cached_qsos_by_date(award_id, operator_callsign):
-    return db.get_qsos_by_date(award_id, operator_callsign=operator_callsign)
+def _cached_qsos_by_date(award_id, operator_callsign, start_date=None, end_date=None):
+    return db.get_qsos_by_date(award_id, operator_callsign=operator_callsign,
+                               start_date=start_date, end_date=end_date)
 
 
 @st.cache_data(ttl=20, show_spinner=False)
-def _cached_qsos_by_hour(award_id, operator_callsign):
-    return db.get_qsos_by_hour(award_id, operator_callsign=operator_callsign)
+def _cached_qsos_by_hour(award_id, operator_callsign, start_date=None, end_date=None):
+    return db.get_qsos_by_hour(award_id, operator_callsign=operator_callsign,
+                               start_date=start_date, end_date=end_date)
 
 
 @st.cache_data(ttl=20, show_spinner=False)
-def _cached_qsos_band_mode_matrix(award_id, operator_callsign):
-    return db.get_qsos_band_mode_matrix(award_id, operator_callsign=operator_callsign)
+def _cached_qsos_band_mode_matrix(award_id, operator_callsign, start_date=None, end_date=None):
+    return db.get_qsos_band_mode_matrix(award_id, operator_callsign=operator_callsign,
+                                         start_date=start_date, end_date=end_date)
 
 
 def render_stats_tab(t, award_id):
     """Render the dedicated Stats tab with operator activation statistics."""
     st.subheader(f"📊 {t.get('act_stats_title', 'Activation Statistics')}")
-    _render_activation_stats(t, award_id)
+    award = db.get_award_by_id(award_id)
+    start_date = award.get('start_date') or None if award else None
+    end_date = award.get('end_date') or None if award else None
+    _render_activation_stats(t, award_id, start_date, end_date)
 
 
-def _render_activation_stats(t, award_id):
+def _render_activation_stats(t, award_id, start_date=None, end_date=None):
     """Render operator activation statistics with lazy sub-tabs."""
     from ui.charts import (
         create_activation_operator_chart,
@@ -559,7 +566,7 @@ def _render_activation_stats(t, award_id):
         _format_duration,
     )
 
-    stats = _cached_activation_stats(award_id)
+    stats = _cached_activation_stats(award_id, start_date, end_date)
     if stats['total_activations'] == 0:
         st.info(t.get('act_no_data', 'No activation data yet. Stats will appear once operators start blocking bands.'))
         return
@@ -703,9 +710,11 @@ def render_qso_log_tab(t, award_id, operator_callsign, is_admin=False):
 
     st.subheader(f"📋 {t.get('qso_log_title', 'QSO Log')}")
 
-    # Current award for display name + export filename
+    # Current award for display name + export filename + date range
     award = db.get_award_by_id(award_id)
     award_name = award['name'] if award else "qso_log"
+    start_date = award.get('start_date') or None if award else None
+    end_date = award.get('end_date') or None if award else None
 
     # --- Scope toggle (admin can see everyone's QSOs, operator is always own)
     scope_is_own = True
@@ -728,13 +737,13 @@ def render_qso_log_tab(t, award_id, operator_callsign, is_admin=False):
 
     st.divider()
 
-    # --- Stats + Charts
-    stats = _cached_qso_stats(award_id, scoped_operator)
+    # --- Stats + Charts (scoped to activation period)
+    stats = _cached_qso_stats(award_id, scoped_operator, start_date, end_date)
 
     if stats['total'] == 0:
         st.info(t.get('qso_no_qsos', 'No QSOs uploaded yet.'))
     else:
-        _render_qso_charts(t, award_id, scoped_operator, stats)
+        _render_qso_charts(t, award_id, scoped_operator, stats, start_date, end_date)
         st.divider()
         # --- Filters + paginated log view
         _render_qso_log_view(
@@ -747,7 +756,8 @@ def render_qso_log_tab(t, award_id, operator_callsign, is_admin=False):
     _render_qso_batches_section(t, award_id, operator_callsign, is_admin)
 
 
-def _render_qso_charts(t, award_id, scoped_operator, stats):
+def _render_qso_charts(t, award_id, scoped_operator, stats,
+                       start_date=None, end_date=None):
     """Render QSO statistics as visual charts and insight metrics."""
     from ui.charts import (
         create_qso_timeline_chart,
@@ -774,10 +784,10 @@ def _render_qso_charts(t, award_id, scoped_operator, stats):
             top_mode or "—",
         )
 
-    # --- Fetch chart data (cached, 20s TTL)
-    by_date = _cached_qsos_by_date(award_id, scoped_operator)
-    by_hour = _cached_qsos_by_hour(award_id, scoped_operator)
-    bm_matrix = _cached_qsos_band_mode_matrix(award_id, scoped_operator)
+    # --- Fetch chart data (cached, 20s TTL, scoped to activation period)
+    by_date = _cached_qsos_by_date(award_id, scoped_operator, start_date, end_date)
+    by_hour = _cached_qsos_by_hour(award_id, scoped_operator, start_date, end_date)
+    bm_matrix = _cached_qsos_band_mode_matrix(award_id, scoped_operator, start_date, end_date)
 
     # --- Insights row (computed from by_date and by_hour)
     if by_date:

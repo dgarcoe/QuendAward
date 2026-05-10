@@ -338,10 +338,12 @@ def ingest_adif_bytes(
 # Queries
 # ---------------------------------------------------------------------------
 
-def get_qso_stats(award_id: int, operator_callsign: Optional[str] = None) -> Dict:
+def get_qso_stats(award_id: int, operator_callsign: Optional[str] = None,
+                   start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict:
     """Get total / by-band / by-mode / unique-call counts for an award.
 
     Passing operator_callsign scopes everything to that operator.
+    start_date/end_date filter by qso_date (YYYY-MM-DD).
     """
     with get_db() as conn:
         c = conn.cursor()
@@ -350,6 +352,12 @@ def get_qso_stats(award_id: int, operator_callsign: Optional[str] = None) -> Dic
         if operator_callsign:
             base += " AND operator_callsign = ?"
             params.append(operator_callsign.upper())
+        if start_date:
+            base += " AND qso_date >= ?"
+            params.append(start_date)
+        if end_date:
+            base += " AND qso_date <= ?"
+            params.append(end_date)
 
         total = c.execute(f"SELECT COUNT(*) {base}", params).fetchone()[0]
         unique_calls = c.execute(
@@ -390,7 +398,8 @@ def get_qso_stats(award_id: int, operator_callsign: Optional[str] = None) -> Dic
 
 
 def get_qsos_by_date(
-    award_id: int, operator_callsign: Optional[str] = None
+    award_id: int, operator_callsign: Optional[str] = None,
+    start_date: Optional[str] = None, end_date: Optional[str] = None,
 ) -> List[Dict]:
     """QSO count per date, oldest first. For the activity timeline chart."""
     base = "FROM qso_log WHERE award_id = ?"
@@ -398,6 +407,12 @@ def get_qsos_by_date(
     if operator_callsign:
         base += " AND operator_callsign = ?"
         params.append(operator_callsign.upper())
+    if start_date:
+        base += " AND qso_date >= ?"
+        params.append(start_date)
+    if end_date:
+        base += " AND qso_date <= ?"
+        params.append(end_date)
     with get_db() as conn:
         rows = conn.execute(
             f"SELECT qso_date, COUNT(*) AS cnt {base} "
@@ -408,7 +423,8 @@ def get_qsos_by_date(
 
 
 def get_qsos_by_hour(
-    award_id: int, operator_callsign: Optional[str] = None
+    award_id: int, operator_callsign: Optional[str] = None,
+    start_date: Optional[str] = None, end_date: Optional[str] = None,
 ) -> List[Dict]:
     """QSO count per UTC hour (0-23). For the hourly activity chart."""
     base = "FROM qso_log WHERE award_id = ?"
@@ -416,6 +432,12 @@ def get_qsos_by_hour(
     if operator_callsign:
         base += " AND operator_callsign = ?"
         params.append(operator_callsign.upper())
+    if start_date:
+        base += " AND qso_date >= ?"
+        params.append(start_date)
+    if end_date:
+        base += " AND qso_date <= ?"
+        params.append(end_date)
     with get_db() as conn:
         rows = conn.execute(
             f"SELECT CAST(SUBSTR(time_on, 1, 2) AS INTEGER) AS hour, "
@@ -426,7 +448,8 @@ def get_qsos_by_hour(
 
 
 def get_qsos_band_mode_matrix(
-    award_id: int, operator_callsign: Optional[str] = None
+    award_id: int, operator_callsign: Optional[str] = None,
+    start_date: Optional[str] = None, end_date: Optional[str] = None,
 ) -> List[Dict]:
     """QSO count per band/mode pair. For the band×mode heatmap."""
     base = "FROM qso_log WHERE award_id = ?"
@@ -434,6 +457,12 @@ def get_qsos_band_mode_matrix(
     if operator_callsign:
         base += " AND operator_callsign = ?"
         params.append(operator_callsign.upper())
+    if start_date:
+        base += " AND qso_date >= ?"
+        params.append(start_date)
+    if end_date:
+        base += " AND qso_date <= ?"
+        params.append(end_date)
     with get_db() as conn:
         rows = conn.execute(
             f"SELECT band, mode, COUNT(*) AS cnt {base} "
