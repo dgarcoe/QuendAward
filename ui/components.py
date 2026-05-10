@@ -1400,7 +1400,7 @@ def render_manage_award_tab(t, callsign, is_admin=False):
     if candidates:
         ac1, ac2 = st.columns([4, 1])
         with ac1:
-            selected_member = st.selectbox(
+            selected_members = st.multiselect(
                 t.get('add_member', 'Add member'),
                 options=[op['callsign'] for op in candidates],
                 format_func=lambda c: f"{c} — {next((op['operator_name'] for op in candidates if op['callsign'] == c), '')}",
@@ -1409,13 +1409,11 @@ def render_manage_award_tab(t, callsign, is_admin=False):
         with ac2:
             st.write("")
             if st.button("➕", key=f"mgr_add_member_btn_{award_id}",
-                         help=t.get('add_member', 'Add member')):
-                ok, msg = db.add_member(selected_member, award_id, added_by=callsign)
-                if ok:
-                    st.success(msg)
-                    st.rerun()
-                else:
-                    st.error(msg)
+                         help=t.get('add_member', 'Add member'),
+                         disabled=not selected_members):
+                for member_cs in selected_members:
+                    db.add_member(member_cs, award_id, added_by=callsign)
+                st.rerun()
     else:
         st.caption(t.get('all_operators_are_members', 'All operators are already members.'))
 
