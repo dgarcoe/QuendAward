@@ -563,16 +563,31 @@ def delete_all_qsos_for_award(award_id: int) -> int:
         return deleted
 
 
-def delete_qsos_by_ids(qso_ids: List[int]) -> int:
-    """Delete specific QSOs by their IDs. Returns count of deleted rows."""
-    if not qso_ids:
-        return 0
-    placeholders = ','.join('?' for _ in qso_ids)
+def delete_qsos_for_operator(award_id: int, operator_callsign: str) -> int:
+    """Delete all QSOs and batches for one operator on a given award."""
     with get_db() as conn:
-        return conn.execute(
-            f"DELETE FROM qso_log WHERE id IN ({placeholders})",
-            qso_ids,
+        cursor = conn.cursor()
+        deleted = cursor.execute(
+            "DELETE FROM qso_log WHERE award_id = ? AND operator_callsign = ?",
+            (award_id, operator_callsign.upper()),
         ).rowcount
+        cursor.execute(
+            "DELETE FROM qso_upload_batch WHERE award_id = ? AND operator_callsign = ?",
+            (award_id, operator_callsign.upper()),
+        )
+        return deleted
+
+
+def get_qso_operators(award_id: int) -> List[dict]:
+    """Get operators with QSO counts for an award."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT operator_callsign, COUNT(*) AS cnt "
+            "FROM qso_log WHERE award_id = ? "
+            "GROUP BY operator_callsign ORDER BY operator_callsign",
+            (award_id,),
+        ).fetchall()
+        return [{"callsign": r[0], "count": r[1]} for r in rows]
 
 
 # ---------------------------------------------------------------------------

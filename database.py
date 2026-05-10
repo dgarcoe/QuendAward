@@ -90,6 +90,8 @@ from features.qso_log import (
     get_upload_batches,
     delete_batch,
     delete_all_qsos_for_award,
+    delete_qsos_for_operator,
+    get_qso_operators,
     MAX_ADIF_UPLOAD_BYTES,
 )
 

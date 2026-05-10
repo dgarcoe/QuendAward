@@ -1105,6 +1105,72 @@ def _render_qso_log_view(
             key=f"qso_export_btn_{award_id}_{band_filter}_{mode_filter}",
         )
 
+    # --- Admin: delete all QSOs for a specific operator
+    if is_admin:
+        _render_admin_qso_delete(t, award_id)
+
+
+def _render_admin_qso_delete(t, award_id):
+    """Admin tool to delete all QSOs from one operator on this award."""
+    operators = db.get_qso_operators(award_id)
+    if not operators:
+        return
+
+    st.divider()
+    st.markdown(f"**🗑️ {t.get('qso_admin_delete_heading', 'Delete operator QSOs')}**")
+
+    options = [f"{op['callsign']} ({op['count']} QSOs)" for op in operators]
+    selected = st.selectbox(
+        t.get('qso_admin_select_op', 'Select operator'),
+        options=options,
+        key=f"qso_admin_del_op_{award_id}",
+    )
+    idx = options.index(selected)
+    target = operators[idx]
+
+    confirm_key = f"qso_admin_del_confirm_{award_id}_{target['callsign']}"
+    if st.session_state.get(confirm_key):
+        st.warning(
+            t.get(
+                'qso_admin_delete_warn',
+                '⚠️ This will permanently delete all {count} QSOs from {callsign}. Are you sure?'
+            ).format(count=target['count'], callsign=target['callsign'])
+        )
+        yes_col, no_col = st.columns(2)
+        with yes_col:
+            if st.button(
+                t.get('confirm_delete', 'Yes, delete'),
+                type="primary",
+                key=f"qso_admin_del_yes_{award_id}",
+            ):
+                del st.session_state[confirm_key]
+                deleted = db.delete_qsos_for_operator(award_id, target['callsign'])
+                _cached_qso_stats.clear()
+                _cached_qsos_by_date.clear()
+                _cached_qsos_by_hour.clear()
+                _cached_qsos_band_mode_matrix.clear()
+                st.success(
+                    t.get(
+                        'qso_deleted_ok',
+                        '✅ {count} QSO(s) deleted.'
+                    ).format(count=deleted)
+                )
+                st.rerun()
+        with no_col:
+            if st.button(
+                t.get('cancel', 'Cancel'),
+                key=f"qso_admin_del_no_{award_id}",
+            ):
+                del st.session_state[confirm_key]
+                st.rerun()
+    else:
+        if st.button(
+            f"🗑️ {t.get('qso_admin_delete_btn', 'Delete all QSOs from this operator')}",
+            key=f"qso_admin_del_btn_{award_id}",
+        ):
+            st.session_state[confirm_key] = True
+            st.rerun()
+
 
 def _render_qso_batches_section(t, award_id, operator_callsign, is_admin):
     """Upload history with per-batch undo."""
