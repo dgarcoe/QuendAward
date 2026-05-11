@@ -379,13 +379,20 @@ def get_qso_stats(award_id: int, operator_callsign: Optional[str] = None,
         }
         by_operator: Dict[str, int] = {}
         if not operator_callsign:
+            op_base = "FROM qso_log WHERE award_id = ?"
+            op_params: List = [award_id]
+            if start_date:
+                op_base += " AND qso_date >= ?"
+                op_params.append(start_date)
+            if end_date:
+                op_base += " AND qso_date <= ?"
+                op_params.append(end_date)
             by_operator = {
                 row[0]: row[1]
                 for row in c.execute(
-                    "SELECT operator_callsign, COUNT(*) FROM qso_log "
-                    "WHERE award_id = ? GROUP BY operator_callsign "
-                    "ORDER BY 2 DESC",
-                    [award_id],
+                    f"SELECT operator_callsign, COUNT(*) {op_base} "
+                    "GROUP BY operator_callsign ORDER BY 2 DESC",
+                    op_params,
                 )
             }
         return {

@@ -316,6 +316,10 @@ def get_operator_blocks(operator_callsign: str, award_id: Optional[int] = None) 
 def get_activation_stats(award_id: int, start_date: str = None, end_date: str = None) -> dict:
     """Aggregate activation statistics for an award.
 
+    Includes both completed and currently-active blocks.  Active blocks use
+    wall-clock elapsed time as their duration so live events show real-time
+    stats.
+
     start_date/end_date filter by blocked_at date (YYYY-MM-DD).
 
     Returns dict with:
@@ -326,11 +330,16 @@ def get_activation_stats(award_id: int, start_date: str = None, end_date: str = 
       - by_mode: dict[mode, {activations, seconds}] sorted by seconds desc
       - by_date: list[{date, activations, seconds}] sorted by date asc
       - by_hour: list[{hour, activations}] sorted by hour asc
-      - recent: list[dict] last 20 completed activations
+      - recent: list[dict] last 20 activations (completed first, then active)
     """
     with get_db() as conn:
         c = conn.cursor()
-        base = "FROM block_history WHERE award_id = ? AND duration_seconds IS NOT NULL"
+
+        # For active (not-yet-unblocked) blocks, compute duration on the fly.
+        dur = ("COALESCE(duration_seconds, "
+               "CAST((julianday(CURRENT_TIMESTAMP) - julianday(blocked_at)) * 86400 AS INTEGER))")
+
+        base = "FROM block_history WHERE award_id = ?"
         params = [award_id]
         if start_date:
             base += " AND DATE(blocked_at) >= ?"
@@ -341,7 +350,7 @@ def get_activation_stats(award_id: int, start_date: str = None, end_date: str = 
 
         # Totals
         row = c.execute(
-            f"SELECT COUNT(*), COALESCE(SUM(duration_seconds), 0) {base}",
+            f"SELECT COUNT(*), COALESCE(SUM({dur}), 0) {base}",
             params,
         ).fetchone()
         total_activations = row[0]
@@ -351,7 +360,7 @@ def get_activation_stats(award_id: int, start_date: str = None, end_date: str = 
         by_operator = {}
         for r in c.execute(
             f"SELECT operator_callsign, COUNT(*) AS cnt, "
-            f"SUM(duration_seconds) AS secs {base} "
+            f"SUM({dur}) AS secs {base} "
             "GROUP BY operator_callsign ORDER BY secs DESC",
             params,
         ):
@@ -361,7 +370,7 @@ def get_activation_stats(award_id: int, start_date: str = None, end_date: str = 
         by_band = {}
         for r in c.execute(
             f"SELECT band, COUNT(*) AS cnt, "
-            f"SUM(duration_seconds) AS secs {base} "
+            f"SUM({dur}) AS secs {base} "
             "GROUP BY band ORDER BY secs DESC",
             params,
         ):
@@ -371,7 +380,7 @@ def get_activation_stats(award_id: int, start_date: str = None, end_date: str = 
         by_mode = {}
         for r in c.execute(
             f"SELECT mode, COUNT(*) AS cnt, "
-            f"SUM(duration_seconds) AS secs {base} "
+            f"SUM({dur}) AS secs {base} "
             "GROUP BY mode ORDER BY secs DESC",
             params,
         ):
@@ -381,7 +390,7 @@ def get_activation_stats(award_id: int, start_date: str = None, end_date: str = 
         by_date = []
         for r in c.execute(
             f"SELECT DATE(blocked_at) AS d, COUNT(*) AS cnt, "
-            f"SUM(duration_seconds) AS secs {base} "
+            f"SUM({dur}) AS secs {base} "
             "GROUP BY d ORDER BY d",
             params,
         ):
@@ -396,8 +405,8 @@ def get_activation_stats(award_id: int, start_date: str = None, end_date: str = 
         ):
             by_hour.append({'hour': r[0], 'activations': r[1]})
 
-        # Recent completed activations
-        recent_where = "WHERE award_id = ? AND unblocked_at IS NOT NULL"
+        # Recent activations (completed + active, newest first)
+        recent_where = "WHERE award_id = ?"
         recent_params: list = [award_id]
         if start_date:
             recent_where += " AND DATE(blocked_at) >= ?"
@@ -408,9 +417,9 @@ def get_activation_stats(award_id: int, start_date: str = None, end_date: str = 
         recent = []
         for r in c.execute(
             "SELECT operator_callsign, band, mode, blocked_at, "
-            "unblocked_at, duration_seconds "
+            f"unblocked_at, {dur} AS duration_seconds "
             f"FROM block_history {recent_where} "
-            "ORDER BY unblocked_at DESC LIMIT 20",
+            "ORDER BY blocked_at DESC LIMIT 20",
             recent_params,
         ):
             recent.append(dict(r))

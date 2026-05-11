@@ -441,6 +441,7 @@ TRANSLATIONS = {
         'act_col_end': 'End',
         'act_col_duration': 'Duration',
         'act_no_data': 'No activation data yet. Stats will appear once operators start blocking bands.',
+        'act_active': 'Active',
     },
     'es': {
         # General
@@ -879,6 +880,7 @@ TRANSLATIONS = {
         'act_col_end': 'Fin',
         'act_col_duration': 'Duración',
         'act_no_data': 'Aún no hay datos de activación. Las estadísticas aparecerán cuando los operadores empiecen a bloquear bandas.',
+        'act_active': 'Activo',
     },
     'gl': {
         # General
@@ -1317,6 +1319,7 @@ TRANSLATIONS = {
         'act_col_end': 'Fin',
         'act_col_duration': 'Duración',
         'act_no_data': 'Aínda non hai datos de activación. As estatísticas aparecerán cando os operadores comecen a bloquear bandas.',
+        'act_active': 'Activo',
     }
 }
 

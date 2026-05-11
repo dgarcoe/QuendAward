@@ -567,11 +567,8 @@ def _render_activation_stats(t, award_id, start_date=None, end_date=None):
     )
 
     stats = _cached_activation_stats(award_id, start_date, end_date)
-    if stats['total_activations'] == 0:
-        st.info(t.get('act_no_data', 'No activation data yet. Stats will appear once operators start blocking bands.'))
-        return
 
-    # Top-level metrics (always visible)
+    # Top-level metrics (always visible, even when 0)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.metric(
@@ -643,13 +640,15 @@ def _render_activation_stats(t, award_id, start_date=None, end_date=None):
     with sub_tabs[4]:
         if stats['recent']:
             rows = []
+            active_label = t.get('act_active', 'Active')
             for r in stats['recent']:
+                end_val = (r.get('unblocked_at') or '')[:16] if r.get('unblocked_at') else f"🟢 {active_label}"
                 rows.append({
                     t.get('qso_col_op', 'Op'): r['operator_callsign'],
                     t.get('qso_col_band', 'Band'): r['band'],
                     t.get('qso_col_mode', 'Mode'): r['mode'],
                     t.get('act_col_start', 'Start'): (r.get('blocked_at') or '')[:16],
-                    t.get('act_col_end', 'End'): (r.get('unblocked_at') or '')[:16],
+                    t.get('act_col_end', 'End'): end_val,
                     t.get('act_col_duration', 'Duration'): _format_duration(r.get('duration_seconds')),
                 })
             st.dataframe(rows, use_container_width=True, hide_index=True)
@@ -740,16 +739,15 @@ def render_qso_log_tab(t, award_id, operator_callsign, is_admin=False):
     # --- Stats + Charts (scoped to activation period)
     stats = _cached_qso_stats(award_id, scoped_operator, start_date, end_date)
 
-    if stats['total'] == 0:
-        st.info(t.get('qso_no_qsos', 'No QSOs uploaded yet.'))
-    else:
+    if stats['total'] > 0:
         _render_qso_charts(t, award_id, scoped_operator, stats, start_date, end_date)
         st.divider()
-        # --- Filters + paginated log view
         _render_qso_log_view(
             t, award_id, scoped_operator, award_name, stats['total'],
             is_admin=is_admin,
         )
+    else:
+        st.info(t.get('qso_no_qsos', 'No QSOs uploaded yet.'))
 
     # --- Upload history (own batches, undo)
     st.divider()
