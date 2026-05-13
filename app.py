@@ -506,7 +506,7 @@ def operator_panel():
     tab_idx += 1
 
     with tabs[tab_idx]:
-        @st.fragment(run_every=timedelta(seconds=30))
+        @st.fragment()
         def _stats_fragment():
             if active_awards:
                 render_award_selector(active_awards, t, key_suffix="_stats", show_details=False)
@@ -518,7 +518,7 @@ def operator_panel():
 
     if show_announcements:
         with tabs[tab_idx]:
-            @st.fragment(run_every=refresh_interval)
+            @st.fragment()
             def _announcements_fragment():
                 render_announcements_operator_tab(t, st.session_state.callsign)
             _announcements_fragment()
