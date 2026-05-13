@@ -10,7 +10,7 @@ import bcrypt
 
 from core.database import get_db
 
-SESSION_MAX_AGE_DAYS = 7
+SESSION_MAX_AGE_DAYS = 1
 
 logger = logging.getLogger(__name__)
 
