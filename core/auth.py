@@ -2,12 +2,15 @@
 Authentication and operator management functions.
 """
 import logging
+import secrets
 import sqlite3
 from typing import List, Tuple, Optional
 
 import bcrypt
 
 from core.database import get_db
+
+SESSION_MAX_AGE_DAYS = 7
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +147,7 @@ def delete_operator(callsign: str) -> Tuple[bool, str]:
             if not operator:
                 return False, "Operator not found"
 
+            cursor.execute('DELETE FROM sessions WHERE callsign = ?', (callsign.upper(),))
             cursor.execute('DELETE FROM band_mode_blocks WHERE operator_callsign = ?', (callsign.upper(),))
             cursor.execute('DELETE FROM operators WHERE callsign = ?', (callsign.upper(),))
             return True, f"Operator {callsign} deleted successfully"
@@ -193,3 +197,71 @@ def admin_reset_password(callsign: str, new_password: str) -> Tuple[bool, str]:
     except Exception:
         logger.exception("Error resetting password")
         return False, "An unexpected error occurred. Please try again."
+
+
+# ---------------------------------------------------------------------------
+# Persistent sessions
+# ---------------------------------------------------------------------------
+
+def create_session(callsign: str, operator_name: str,
+                   is_admin: bool = False, is_env_admin: bool = False) -> str:
+    """Create a persistent session and return the token."""
+    token = secrets.token_urlsafe(32)
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP"
+        )
+        conn.execute(
+            '''INSERT INTO sessions
+                 (token, callsign, operator_name, is_admin, is_env_admin, expires_at)
+               VALUES (?, ?, ?, ?, ?,
+                       datetime(CURRENT_TIMESTAMP, ? || ' days'))''',
+            (token, callsign, operator_name,
+             1 if is_admin else 0, 1 if is_env_admin else 0,
+             str(SESSION_MAX_AGE_DAYS)),
+        )
+    return token
+
+
+def validate_session(token: str) -> Optional[dict]:
+    """Validate a session token. Returns session dict or None."""
+    if not token:
+        return None
+    with get_db() as conn:
+        row = conn.execute(
+            '''SELECT callsign, operator_name, is_admin, is_env_admin
+               FROM sessions
+               WHERE token = ? AND expires_at > CURRENT_TIMESTAMP''',
+            (token,),
+        ).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        if not result['is_env_admin']:
+            op = conn.execute(
+                "SELECT is_admin FROM operators WHERE callsign = ?",
+                (result['callsign'],),
+            ).fetchone()
+            if not op:
+                conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+                return None
+            result['is_admin'] = bool(op['is_admin'])
+        else:
+            result['is_admin'] = True
+        return result
+
+
+def delete_session(token: str):
+    """Delete a session by token."""
+    if not token:
+        return
+    with get_db() as conn:
+        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+
+
+def delete_sessions_for_operator(callsign: str):
+    """Delete all sessions for an operator (e.g. on password change)."""
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM sessions WHERE callsign = ?", (callsign.upper(),)
+        )

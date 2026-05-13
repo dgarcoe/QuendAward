@@ -13,6 +13,7 @@ from datetime import timedelta
 import bcrypt
 import streamlit as st
 import database as db
+from core.auth import SESSION_MAX_AGE_DAYS
 
 # Import configuration
 from config import (
@@ -67,6 +68,43 @@ logger = logging.getLogger(__name__)
 
 # In-memory login rate limiter: callsign -> [timestamps of failed attempts]
 _login_attempts: dict[str, list[float]] = defaultdict(list)
+
+_COOKIE_NAME = "qa_session"
+_COOKIE_MAX_AGE = SESSION_MAX_AGE_DAYS * 86400
+
+
+def _set_session_cookie(token: str):
+    """Set the persistent session cookie via JavaScript."""
+    st.html(
+        f'<script>document.cookie = "{_COOKIE_NAME}={token}'
+        f'; path=/; max-age={_COOKIE_MAX_AGE}; SameSite=Lax";</script>'
+    )
+
+
+def _clear_session_cookie():
+    """Delete the session cookie via JavaScript."""
+    st.html(
+        f'<script>document.cookie = "{_COOKIE_NAME}='
+        '; path=/; max-age=0; SameSite=Lax";</script>'
+    )
+
+
+def _try_restore_session():
+    """Restore session from cookie if the WebSocket reconnected."""
+    if st.session_state.logged_in:
+        return
+    token = st.context.cookies.get(_COOKIE_NAME)
+    if not token:
+        return
+    session = db.validate_session(token)
+    if not session:
+        _clear_session_cookie()
+        return
+    st.session_state.logged_in = True
+    st.session_state.callsign = session['callsign']
+    st.session_state.operator_name = session['operator_name']
+    st.session_state.is_admin = bool(session['is_admin'])
+    st.session_state.is_env_admin = bool(session.get('is_env_admin', False))
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +245,10 @@ def _logout():
     """Clear all session state and log out the current user."""
     if st.session_state.callsign:
         db.unblock_all_for_operator(st.session_state.callsign)
+    token = st.context.cookies.get(_COOKIE_NAME)
+    if token:
+        db.delete_session(token)
+    _clear_session_cookie()
     keys_to_clear = ['logged_in', 'callsign', 'operator_name', 'is_admin',
                      'is_env_admin', 'current_award_id', 'go_to_announcements',
                      'reset_password_callsign']
@@ -256,6 +298,11 @@ def login_page():
                     st.session_state.operator_name = t['admin']
                     st.session_state.is_admin = True
                     st.session_state.is_env_admin = True
+                    token = db.create_session(
+                        callsign, t['admin'],
+                        is_admin=True, is_env_admin=True,
+                    )
+                    _set_session_cookie(token)
                     st.success(f"{t['success_welcome']}, {t['admin']}!")
                     st.rerun()
                 else:
@@ -267,6 +314,11 @@ def login_page():
                         st.session_state.operator_name = operator['operator_name']
                         st.session_state.is_admin = bool(operator.get('is_admin', 0))
                         st.session_state.is_env_admin = False
+                        token = db.create_session(
+                            operator['callsign'], operator['operator_name'],
+                            is_admin=bool(operator.get('is_admin', 0)),
+                        )
+                        _set_session_cookie(token)
                         st.success(f"{t['success_welcome']}, {operator['operator_name']}!")
                         st.rerun()
                     else:
@@ -646,6 +698,9 @@ def main():
 
     # Initialize database
     db.init_database()
+
+    # Restore session from cookie (survives page refresh / tab switch)
+    _try_restore_session()
 
     # Start MQTT subscriber for chat persistence (runs once per process)
     if CHAT_ENABLED:

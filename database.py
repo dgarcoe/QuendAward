@@ -26,6 +26,10 @@ from core.auth import (
     delete_operator,
     change_password,
     admin_reset_password,
+    create_session,
+    validate_session,
+    delete_session,
+    delete_sessions_for_operator,
 )
 
 # Features
@@ -163,6 +167,10 @@ __all__ = [
     'delete_operator',
     'change_password',
     'admin_reset_password',
+    'create_session',
+    'validate_session',
+    'delete_session',
+    'delete_sessions_for_operator',
     # Features - Blocks
     'block_band_mode',
     'unblock_band_mode',

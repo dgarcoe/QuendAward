@@ -408,6 +408,19 @@ def _run_migrations(cursor, conn):
         )
     ''')
 
+    # Persistent login sessions
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            callsign TEXT NOT NULL,
+            operator_name TEXT NOT NULL,
+            is_admin INTEGER DEFAULT 0,
+            is_env_admin INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL
+        )
+    ''')
+
 
 def _get_column_names(cursor, table):
     """Helper to get column names for a table."""
