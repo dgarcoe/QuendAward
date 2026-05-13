@@ -546,16 +546,17 @@ def _cached_qsos_band_mode_matrix(award_id, operator_callsign, start_date=None, 
                                          start_date=start_date, end_date=end_date)
 
 
-def render_stats_tab(t, award_id):
+def render_stats_tab(t, award_id, callsign=None, is_admin=False):
     """Render the dedicated Stats tab with operator activation statistics."""
     st.subheader(f"📊 {t.get('act_stats_title', 'Activation Statistics')}")
     award = db.get_award_by_id(award_id)
     start_date = award.get('start_date') or None if award else None
     end_date = award.get('end_date') or None if award else None
-    _render_activation_stats(t, award_id, start_date, end_date)
+    can_edit = db.can_manage_award(callsign, award_id, is_admin=is_admin) if callsign else False
+    _render_activation_stats(t, award_id, start_date, end_date, can_edit=can_edit)
 
 
-def _render_activation_stats(t, award_id, start_date=None, end_date=None):
+def _render_activation_stats(t, award_id, start_date=None, end_date=None, can_edit=False):
     """Render operator activation statistics with lazy sub-tabs."""
     from ui.charts import (
         create_activation_operator_chart,
@@ -639,19 +640,144 @@ def _render_activation_stats(t, award_id, start_date=None, end_date=None):
 
     with sub_tabs[4]:
         if stats['recent']:
-            rows = []
-            active_label = t.get('act_active', 'Active')
-            for r in stats['recent']:
-                end_val = (r.get('unblocked_at') or '')[:16] if r.get('unblocked_at') else f"🟢 {active_label}"
-                rows.append({
-                    t.get('qso_col_op', 'Op'): r['operator_callsign'],
-                    t.get('qso_col_band', 'Band'): r['band'],
-                    t.get('qso_col_mode', 'Mode'): r['mode'],
-                    t.get('act_col_start', 'Start'): (r.get('blocked_at') or '')[:16],
-                    t.get('act_col_end', 'End'): end_val,
-                    t.get('act_col_duration', 'Duration'): _format_duration(r.get('duration_seconds')),
-                })
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+            _render_recent_activations(t, stats['recent'], award_id, can_edit)
+
+
+def _render_recent_activations(t, recent, award_id, can_edit):
+    """Render the recent activations list with optional edit controls."""
+    from datetime import datetime
+    from ui.charts import _format_duration
+
+    active_label = t.get('act_active', 'Active')
+
+    if not can_edit:
+        rows = []
+        for r in recent:
+            end_val = (r.get('unblocked_at') or '')[:16] if r.get('unblocked_at') else f"🟢 {active_label}"
+            rows.append({
+                t.get('qso_col_op', 'Op'): r['operator_callsign'],
+                t.get('qso_col_band', 'Band'): r['band'],
+                t.get('qso_col_mode', 'Mode'): r['mode'],
+                t.get('act_col_start', 'Start'): (r.get('blocked_at') or '')[:16],
+                t.get('act_col_end', 'End'): end_val,
+                t.get('act_col_duration', 'Duration'): _format_duration(r.get('duration_seconds')),
+            })
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+        return
+
+    for r in recent:
+        rec_id = r.get('id')
+        is_active = not r.get('unblocked_at')
+        status = f"🟢 {active_label}" if is_active else ""
+        label = (
+            f"{r['operator_callsign']} — {r['band']}/{r['mode']} — "
+            f"{(r.get('blocked_at') or '')[:16]}  {status}"
+        )
+        with st.expander(label, expanded=False):
+            blocked_str = r.get('blocked_at') or ''
+            unblocked_str = r.get('unblocked_at') or ''
+
+            try:
+                blocked_date = datetime.strptime(blocked_str[:10], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                blocked_date = None
+            try:
+                blocked_time = datetime.strptime(blocked_str[11:16], "%H:%M").time()
+            except (ValueError, TypeError, IndexError):
+                from datetime import time as _time
+                blocked_time = _time(0, 0)
+
+            try:
+                unblocked_date = datetime.strptime(unblocked_str[:10], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                unblocked_date = None
+            try:
+                unblocked_time = datetime.strptime(unblocked_str[11:16], "%H:%M").time()
+            except (ValueError, TypeError, IndexError):
+                from datetime import time as _time
+                unblocked_time = _time(0, 0)
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.caption(t.get('act_col_start', 'Start'))
+                new_start_d = st.date_input(
+                    "date", value=blocked_date, label_visibility="collapsed",
+                    key=f"bh_sd_{rec_id}",
+                )
+                new_start_t = st.time_input(
+                    "time", value=blocked_time, label_visibility="collapsed",
+                    key=f"bh_st_{rec_id}", step=60,
+                )
+            with c2:
+                st.caption(t.get('act_col_end', 'End'))
+                has_end = st.checkbox(
+                    t.get('act_has_end', 'Set end time'),
+                    value=not is_active, key=f"bh_he_{rec_id}",
+                )
+                if has_end:
+                    new_end_d = st.date_input(
+                        "date", value=unblocked_date or blocked_date,
+                        label_visibility="collapsed", key=f"bh_ed_{rec_id}",
+                    )
+                    new_end_t = st.time_input(
+                        "time", value=unblocked_time, label_visibility="collapsed",
+                        key=f"bh_et_{rec_id}", step=60,
+                    )
+
+            bc1, bc2 = st.columns(2)
+            with bc1:
+                if st.button(
+                    t.get('save_changes', 'Save changes'),
+                    key=f"bh_save_{rec_id}", type="primary",
+                    use_container_width=True,
+                ):
+                    new_blocked = f"{new_start_d} {new_start_t}"
+                    new_unblocked = None
+                    if has_end:
+                        new_unblocked = f"{new_end_d} {new_end_t}"
+                        if new_unblocked <= new_blocked:
+                            st.error(t.get('act_edit_end_before_start',
+                                           'End time must be after start time'))
+                            return
+                    ok, msg = db.update_block_history(rec_id, new_blocked, new_unblocked)
+                    if ok:
+                        _cached_activation_stats.clear()
+                        st.success(t.get('act_edit_saved', 'Activation updated'))
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            with bc2:
+                if st.button(
+                    t.get('delete', 'Delete'),
+                    key=f"bh_del_{rec_id}",
+                    use_container_width=True,
+                ):
+                    st.session_state[f"_bh_confirm_del_{rec_id}"] = True
+
+                if st.session_state.get(f"_bh_confirm_del_{rec_id}"):
+                    st.warning(t.get('act_delete_confirm',
+                                     'Are you sure? This cannot be undone.'))
+                    dc1, dc2 = st.columns(2)
+                    with dc1:
+                        if st.button(
+                            t.get('confirm', 'Confirm'), key=f"bh_delok_{rec_id}",
+                            type="primary", use_container_width=True,
+                        ):
+                            ok, msg = db.delete_block_history(rec_id)
+                            if ok:
+                                _cached_activation_stats.clear()
+                                st.session_state.pop(f"_bh_confirm_del_{rec_id}", None)
+                                st.success(t.get('act_edit_deleted', 'Activation deleted'))
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                    with dc2:
+                        if st.button(
+                            t.get('cancel', 'Cancel'), key=f"bh_delno_{rec_id}",
+                            use_container_width=True,
+                        ):
+                            st.session_state.pop(f"_bh_confirm_del_{rec_id}", None)
+                            st.rerun()
 
 
 def render_announcements_operator_tab(t, operator_callsign):

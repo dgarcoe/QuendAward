@@ -416,7 +416,7 @@ def get_activation_stats(award_id: int, start_date: str = None, end_date: str = 
             recent_params.append(end_date)
         recent = []
         for r in c.execute(
-            "SELECT operator_callsign, band, mode, blocked_at, "
+            "SELECT id, operator_callsign, band, mode, blocked_at, "
             f"unblocked_at, {dur} AS duration_seconds "
             f"FROM block_history {recent_where} "
             "ORDER BY blocked_at DESC LIMIT 20",
@@ -434,3 +434,64 @@ def get_activation_stats(award_id: int, start_date: str = None, end_date: str = 
             'by_hour': by_hour,
             'recent': recent,
         }
+
+
+def get_block_history_record(record_id: int) -> Optional[dict]:
+    """Get a single block_history record by ID."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM block_history WHERE id = ?", (record_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def update_block_history(record_id: int, blocked_at: str, unblocked_at: Optional[str]) -> Tuple[bool, str]:
+    """Update blocked_at / unblocked_at timestamps for a block_history record.
+
+    Recomputes duration_seconds automatically.  If unblocked_at is None or
+    empty the activation is treated as still active.
+    """
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            row = c.execute(
+                "SELECT id FROM block_history WHERE id = ?", (record_id,)
+            ).fetchone()
+            if not row:
+                return False, "Record not found"
+
+            if unblocked_at:
+                c.execute(
+                    '''UPDATE block_history
+                         SET blocked_at = ?,
+                             unblocked_at = ?,
+                             duration_seconds = CAST(
+                                 (julianday(?) - julianday(?)) * 86400
+                             AS INTEGER)
+                       WHERE id = ?''',
+                    (blocked_at, unblocked_at, unblocked_at, blocked_at, record_id),
+                )
+            else:
+                c.execute(
+                    '''UPDATE block_history
+                         SET blocked_at = ?,
+                             unblocked_at = NULL,
+                             duration_seconds = NULL
+                       WHERE id = ?''',
+                    (blocked_at, record_id),
+                )
+        return True, "Updated"
+    except Exception as e:
+        logger.exception("Error updating block history")
+        return False, str(e)
+
+
+def delete_block_history(record_id: int) -> Tuple[bool, str]:
+    """Delete a block_history record."""
+    try:
+        with get_db() as conn:
+            conn.execute("DELETE FROM block_history WHERE id = ?", (record_id,))
+        return True, "Deleted"
+    except Exception as e:
+        logger.exception("Error deleting block history")
+        return False, str(e)

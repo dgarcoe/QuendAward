@@ -442,6 +442,11 @@ TRANSLATIONS = {
         'act_col_duration': 'Duration',
         'act_no_data': 'No activation data yet. Stats will appear once operators start blocking bands.',
         'act_active': 'Active',
+        'act_has_end': 'Set end time',
+        'act_edit_saved': 'Activation updated',
+        'act_edit_deleted': 'Activation deleted',
+        'act_edit_end_before_start': 'End time must be after start time',
+        'act_delete_confirm': 'Are you sure? This cannot be undone.',
     },
     'es': {
         # General
@@ -881,6 +886,11 @@ TRANSLATIONS = {
         'act_col_duration': 'Duración',
         'act_no_data': 'Aún no hay datos de activación. Las estadísticas aparecerán cuando los operadores empiecen a bloquear bandas.',
         'act_active': 'Activo',
+        'act_has_end': 'Establecer hora de fin',
+        'act_edit_saved': 'Activación actualizada',
+        'act_edit_deleted': 'Activación eliminada',
+        'act_edit_end_before_start': 'La hora de fin debe ser posterior a la de inicio',
+        'act_delete_confirm': '¿Estás seguro? Esta acción no se puede deshacer.',
     },
     'gl': {
         # General
@@ -1320,6 +1330,11 @@ TRANSLATIONS = {
         'act_col_duration': 'Duración',
         'act_no_data': 'Aínda non hai datos de activación. As estatísticas aparecerán cando os operadores comecen a bloquear bandas.',
         'act_active': 'Activo',
+        'act_has_end': 'Establecer hora de fin',
+        'act_edit_saved': 'Activación actualizada',
+        'act_edit_deleted': 'Activación eliminada',
+        'act_edit_end_before_start': 'A hora de fin debe ser posterior á de inicio',
+        'act_delete_confirm': 'Estás seguro? Esta acción non se pode desfacer.',
     }
 }
 

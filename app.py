@@ -510,7 +510,9 @@ def operator_panel():
         def _stats_fragment():
             if active_awards:
                 render_award_selector(active_awards, t, key_suffix="_stats", show_details=False)
-            render_stats_tab(t, st.session_state.current_award_id)
+            render_stats_tab(t, st.session_state.current_award_id,
+                            callsign=st.session_state.callsign,
+                            is_admin=st.session_state.is_admin)
         _stats_fragment()
     tab_idx += 1
 

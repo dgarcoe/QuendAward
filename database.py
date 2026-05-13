@@ -37,6 +37,9 @@ from features.blocks import (
     get_all_blocks,
     get_operator_blocks,
     get_activation_stats,
+    get_block_history_record,
+    update_block_history,
+    delete_block_history,
 )
 
 from features.awards import (
@@ -168,6 +171,9 @@ __all__ = [
     'get_all_blocks',
     'get_operator_blocks',
     'get_activation_stats',
+    'get_block_history_record',
+    'update_block_history',
+    'delete_block_history',
     # Features - Awards
     'create_award',
     'get_all_awards',
