@@ -552,13 +552,48 @@ def _cached_qsos_by_dxcc(award_id, operator_callsign, start_date=None, end_date=
                                start_date=start_date, end_date=end_date)
 
 
+def _build_stats_html(t, award_id, award, start_date, end_date):
+    """Collect all stats data and generate the HTML report."""
+    from features.export_html import generate_stats_html
+
+    act_stats = _cached_activation_stats(award_id, start_date, end_date)
+    qso_stats = _cached_qso_stats(award_id, None, start_date, end_date)
+    by_date = _cached_qsos_by_date(award_id, None, start_date, end_date)
+    by_hour = _cached_qsos_by_hour(award_id, None, start_date, end_date)
+    bm_matrix = _cached_qsos_band_mode_matrix(award_id, None, start_date, end_date)
+    by_dxcc = _cached_qsos_by_dxcc(award_id, None, start_date, end_date)
+    return generate_stats_html(
+        award=award or {},
+        act_stats=act_stats,
+        qso_stats=qso_stats,
+        by_date_qso=by_date,
+        by_hour_qso=by_hour,
+        bm_matrix=bm_matrix,
+        by_dxcc=by_dxcc,
+        t=t,
+    ).encode("utf-8")
+
+
 def render_stats_tab(t, award_id, callsign=None, is_admin=False):
     """Render the dedicated Stats tab with operator activation statistics."""
-    st.subheader(f"📊 {t.get('act_stats_title', 'Activation Statistics')}")
     award = db.get_award_by_id(award_id)
     start_date = award.get('start_date') or None if award else None
     end_date = award.get('end_date') or None if award else None
     can_edit = db.can_manage_award(callsign, award_id, is_admin=is_admin) if callsign else False
+
+    hdr_col, btn_col = st.columns([5, 1])
+    with hdr_col:
+        st.subheader(f"📊 {t.get('act_stats_title', 'Activation Statistics')}")
+    if can_edit:
+        with btn_col:
+            st.download_button(
+                label=t.get('export_html_btn', 'Export HTML Report'),
+                data=_build_stats_html(t, award_id, award, start_date, end_date),
+                file_name=f"{award.get('name', 'stats')}_report.html",
+                mime="text/html",
+                key=f"dl_html_{award_id}",
+            )
+
     _render_activation_stats(t, award_id, start_date, end_date, can_edit=can_edit)
 
 
