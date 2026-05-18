@@ -510,12 +510,11 @@ def create_qso_dxcc_chart(by_dxcc, t):
     if not by_dxcc:
         return None
 
-    top = by_dxcc[:25]
-    entities = [e['entity'] for e in top]
+    entities = [e['entity'] for e in by_dxcc]
 
     all_prefixes: list[str] = []
     seen: set[str] = set()
-    for entry in top:
+    for entry in by_dxcc:
         for p in entry['prefixes']:
             if p not in seen:
                 all_prefixes.append(p)
@@ -526,7 +525,7 @@ def create_qso_dxcc_chart(by_dxcc, t):
         x_vals = []
         y_vals = []
         text_vals = []
-        for entry in top:
+        for entry in by_dxcc:
             cnt = entry['prefixes'].get(prefix, 0)
             if cnt:
                 x_vals.append(cnt)
@@ -560,7 +559,7 @@ def create_qso_dxcc_chart(by_dxcc, t):
             autorange='reversed',
         ),
     )
-    for entry in top:
+    for entry in by_dxcc:
         fig.add_annotation(
             x=entry['total'], y=entry['entity'],
             text=f"  {entry['total']}",
