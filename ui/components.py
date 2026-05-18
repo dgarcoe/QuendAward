@@ -576,24 +576,11 @@ def _build_stats_html(t, award_id, award, start_date, end_date):
 
 def render_stats_tab(t, award_id, callsign=None, is_admin=False):
     """Render the dedicated Stats tab with operator activation statistics."""
+    st.subheader(f"📊 {t.get('act_stats_title', 'Activation Statistics')}")
     award = db.get_award_by_id(award_id)
     start_date = award.get('start_date') or None if award else None
     end_date = award.get('end_date') or None if award else None
     can_edit = db.can_manage_award(callsign, award_id, is_admin=is_admin) if callsign else False
-
-    hdr_col, btn_col = st.columns([5, 1])
-    with hdr_col:
-        st.subheader(f"📊 {t.get('act_stats_title', 'Activation Statistics')}")
-    if can_edit:
-        with btn_col:
-            st.download_button(
-                label=t.get('export_html_btn', 'Export HTML Report'),
-                data=_build_stats_html(t, award_id, award, start_date, end_date),
-                file_name=f"{award.get('name', 'stats')}_report.html",
-                mime="text/html",
-                key=f"dl_html_{award_id}",
-            )
-
     _render_activation_stats(t, award_id, start_date, end_date, can_edit=can_edit)
 
 
