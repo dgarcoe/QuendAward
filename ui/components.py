@@ -874,13 +874,28 @@ def render_qso_log_tab(t, award_id, operator_callsign, is_admin=False):
         st.warning(f"⚠️ {t['error_no_special_callsign_selected']}")
         return
 
-    st.subheader(f"📋 {t.get('qso_log_title', 'QSO Log')}")
-
     # Current award for display name + export filename + date range
     award = db.get_award_by_id(award_id)
     award_name = award['name'] if award else "qso_log"
     start_date = award.get('start_date') or None if award else None
     end_date = award.get('end_date') or None if award else None
+
+    can_export = is_admin or (
+        db.can_manage_award(operator_callsign, award_id, is_admin=is_admin)
+        if operator_callsign else False
+    )
+    hdr_col, btn_col = st.columns([5, 1])
+    with hdr_col:
+        st.subheader(f"📋 {t.get('qso_log_title', 'QSO Log')}")
+    if can_export:
+        with btn_col:
+            st.download_button(
+                label=t.get('export_html_btn', 'Export HTML Report'),
+                data=_build_stats_html(t, award_id, award, start_date, end_date),
+                file_name=f"{award_name}_report.html",
+                mime="text/html",
+                key=f"dl_html_qso_{award_id}",
+            )
 
     # --- Scope toggle (all operators can view stats for everyone)
     scope_choice = st.radio(

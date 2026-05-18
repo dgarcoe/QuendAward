@@ -9,13 +9,20 @@ from typing import Any, Dict, List, Optional
 import plotly.io as pio
 
 
-def _fig_to_html(fig) -> str:
+def _fig_to_html(fig, cls: str = "") -> str:
     if fig is None:
         return ""
-    return pio.to_html(
-        fig, full_html=False, include_plotlyjs=False,
-        config={"displayModeBar": False},
+    fig = fig.to_dict()
+    fig["layout"] = {**fig.get("layout", {}), "autosize": True}
+    import plotly.graph_objects as go
+    fig_obj = go.Figure(fig)
+    inner = pio.to_html(
+        fig_obj, full_html=False, include_plotlyjs=False,
+        config={"displayModeBar": False, "responsive": True},
     )
+    if cls:
+        return f'<div class="{cls}">{inner}</div>'
+    return inner
 
 
 def _format_duration(seconds: int | None) -> str:
@@ -94,13 +101,13 @@ def generate_stats_html(
     act_band_html = ""
     if act_stats.get("by_band"):
         act_band_html = _fig_to_html(
-            create_activation_band_chart(act_stats["by_band"], t)
+            create_activation_band_chart(act_stats["by_band"], t), cls="half",
         )
 
     act_mode_html = ""
     if act_stats.get("by_mode"):
         act_mode_html = _fig_to_html(
-            create_activation_mode_chart(act_stats["by_mode"], t)
+            create_activation_mode_chart(act_stats["by_mode"], t), cls="half",
         )
 
     act_hourly_html = ""
@@ -154,13 +161,13 @@ def generate_stats_html(
     qso_bm_html = ""
     if bm_matrix:
         qso_bm_html = _fig_to_html(
-            create_qso_band_mode_heatmap(bm_matrix, t)
+            create_qso_band_mode_heatmap(bm_matrix, t), cls="half",
         )
 
     qso_mode_html = ""
     if qso_stats.get("by_mode"):
         qso_mode_html = _fig_to_html(
-            create_qso_mode_chart(qso_stats["by_mode"], t)
+            create_qso_mode_chart(qso_stats["by_mode"], t), cls="half",
         )
 
     qso_band_html = ""
@@ -194,16 +201,18 @@ def generate_stats_html(
             return ""
         return f'<h3>{html.escape(title)}</h3>\n{content}'
 
+    act_bm_content = act_band_html + act_mode_html
+    act_bm_section = ""
+    if act_bm_content:
+        act_bm_section = (
+            f'<h3>{html.escape(t.get("act_subtab_band_mode", "Band / Mode"))}</h3>\n'
+            f'<div class="side-by-side">{act_bm_content}</div>'
+        )
+
     act_sections = "".join(filter(None, [
         _section(t.get("act_chart_timeline", "Timeline"), act_timeline_html),
         _section(t.get("act_chart_operator_title", "Time per operator"), act_operator_html),
-        _section(
-            t.get("act_subtab_band_mode", "Band / Mode"),
-            '<div class="side-by-side">',
-            f'<div>{act_band_html}</div>' if act_band_html else "",
-            f'<div>{act_mode_html}</div>' if act_mode_html else "",
-            '</div>',
-        ),
+        act_bm_section,
         _section(t.get("act_chart_hourly_title", "Activations by hour"), act_hourly_html),
     ]))
 
@@ -215,9 +224,17 @@ def generate_stats_html(
             f'</p>'
         )
 
+    qso_bm_content = qso_bm_html + qso_mode_html
+    qso_bm_section = ""
+    if qso_bm_content:
+        qso_bm_section = (
+            f'<h3>{html.escape(t.get("qso_chart_band_mode", "Band / Mode"))}</h3>\n'
+            f'<div class="side-by-side">{qso_bm_content}</div>'
+        )
+
     qso_sections = "".join(filter(None, [
         _section(t.get("qso_chart_activity", "Activity over time"), qso_timeline_html),
-        _section(t.get("qso_chart_band_mode", "Band / Mode"), qso_bm_html, qso_mode_html),
+        qso_bm_section,
         _section(t.get("qso_chart_bands", "Bands"), qso_band_html),
         _section(t.get("qso_chart_hourly", "Hourly"), qso_hourly_html),
         _section(t.get("qso_chart_dxcc", "DXCC"), dxcc_caption, qso_dxcc_html),
@@ -245,10 +262,12 @@ def generate_stats_html(
   .metric-value {{ font-size: 1.6rem; font-weight: 700; margin-top: .2rem; }}
   .metric-sub {{ font-size: .82rem; color: var(--muted); }}
   .side-by-side {{ display: flex; gap: 1rem; flex-wrap: wrap; }}
-  .side-by-side > div {{ flex: 1; min-width: 300px; }}
+  .half {{ flex: 1 1 45%; min-width: 300px; }}
+  .half .js-plotly-plot, .half .plotly-graph-div {{ width: 100% !important; }}
+  .js-plotly-plot .plotly .modebar {{ display: none !important; }}
+  .plotly-graph-div {{ width: 100% !important; }}
   .caption {{ color: var(--muted); font-size: .85rem; margin-bottom: .5rem; }}
   .footer {{ margin-top: 3rem; color: var(--muted); font-size: .8rem; text-align: center; }}
-  .js-plotly-plot .plotly .modebar {{ display: none !important; }}
   @media (max-width: 600px) {{
     body {{ padding: 1rem; }}
     .metrics {{ flex-direction: column; }}
@@ -312,6 +331,19 @@ def generate_stats_html(
 {qso_sections}
 
 <div class="footer">{html.escape(t.get('export_generated', 'Report generated'))} {generated}</div>
+
+<script>
+window.addEventListener('load', function() {{
+  document.querySelectorAll('.plotly-graph-div').forEach(function(el) {{
+    Plotly.Plots.resize(el);
+  }});
+}});
+window.addEventListener('resize', function() {{
+  document.querySelectorAll('.plotly-graph-div').forEach(function(el) {{
+    Plotly.Plots.resize(el);
+  }});
+}});
+</script>
 
 </body>
 </html>"""
