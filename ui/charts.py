@@ -488,35 +488,70 @@ def create_qso_operator_chart(by_operator, t):
     return fig
 
 
+_DXCC_COLORS = [
+    '#81C784', '#4FC3F7', '#FFD54F', '#FF8A65', '#BA68C8',
+    '#4DD0E1', '#AED581', '#FFB74D', '#F06292', '#90A4AE',
+    '#DCE775', '#7986CB', '#A1887F', '#80DEEA', '#E6EE9C',
+]
+
+
 def create_qso_dxcc_chart(by_dxcc, t):
-    """Horizontal bar chart of QSOs per DXCC prefix (top 25).
+    """Stacked horizontal bar chart of QSOs per DXCC entity.
+
+    Each entity bar is subdivided by prefix (e.g. Spain → EA1, EA2, …).
 
     Args:
-        by_dxcc: Dict[str, int] prefix -> count, sorted by count desc.
+        by_dxcc: list of dicts ``[{entity, total, prefixes: {prefix: count}}]``
+                 sorted by total desc.
         t: Translations dict.
     Returns:
-        Plotly Figure.
+        Plotly Figure or None.
     """
     if not by_dxcc:
         return None
 
-    items = list(by_dxcc.items())[:25]
-    prefixes = [i[0] for i in reversed(items)]
-    counts = [i[1] for i in reversed(items)]
+    top = by_dxcc[:25]
+    top_reversed = list(reversed(top))
+    entities = [e['entity'] for e in top_reversed]
 
-    fig = go.Figure(data=go.Bar(
-        x=counts, y=prefixes,
-        orientation='h',
-        marker_color='#81C784',
-        text=counts,
-        textposition='outside',
-        textfont=dict(color='white', size=11),
-        hovertemplate='%{y}: %{x} QSOs<extra></extra>',
-    ))
+    all_prefixes: list[str] = []
+    seen: set[str] = set()
+    for entry in top:
+        for p in entry['prefixes']:
+            if p not in seen:
+                all_prefixes.append(p)
+                seen.add(p)
+
+    traces = []
+    for i, prefix in enumerate(all_prefixes):
+        x_vals = []
+        y_vals = []
+        text_vals = []
+        for entry in top_reversed:
+            cnt = entry['prefixes'].get(prefix, 0)
+            if cnt:
+                x_vals.append(cnt)
+                y_vals.append(entry['entity'])
+                text_vals.append(prefix if cnt >= entry['total'] * 0.12 else '')
+        if x_vals:
+            traces.append(go.Bar(
+                name=prefix,
+                x=x_vals, y=y_vals,
+                orientation='h',
+                marker_color=_DXCC_COLORS[i % len(_DXCC_COLORS)],
+                text=text_vals,
+                textposition='inside',
+                textfont=dict(color='white', size=10),
+                hovertemplate=f'{prefix}: ' + '%{x} QSOs<extra></extra>',
+            ))
+
+    fig = go.Figure(data=traces)
     fig.update_layout(
         **_QSO_LAYOUT,
-        height=max(150, len(prefixes) * 24 + 40),
-        margin=dict(l=55, r=35, t=5, b=5),
+        barmode='stack',
+        showlegend=False,
+        height=max(180, len(entities) * 28 + 40),
+        margin=dict(l=120, r=50, t=5, b=5),
         xaxis=dict(
             tickfont=dict(color='white', size=10), fixedrange=True,
             showgrid=False,
@@ -525,6 +560,15 @@ def create_qso_dxcc_chart(by_dxcc, t):
             tickfont=dict(color='white', size=10), fixedrange=True,
         ),
     )
+    # Add total count as annotation to the right of each bar
+    for entry in top_reversed:
+        fig.add_annotation(
+            x=entry['total'], y=entry['entity'],
+            text=f"  {entry['total']}",
+            showarrow=False,
+            xanchor='left',
+            font=dict(color='white', size=11),
+        )
     return fig
 
 

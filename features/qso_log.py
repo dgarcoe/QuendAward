@@ -482,13 +482,16 @@ def get_qsos_band_mode_matrix(
 def get_qsos_by_dxcc(
     award_id: int, operator_callsign: Optional[str] = None,
     start_date: Optional[str] = None, end_date: Optional[str] = None,
-) -> Dict[str, int]:
-    """QSO count per DXCC prefix, sorted by count desc.
+) -> List[Dict]:
+    """QSO count per DXCC entity with prefix breakdown.
 
-    Derives the prefix from each callsign (letters+digits up to and
-    including the area digit).  Returns dict prefix -> count.
+    Returns list of dicts sorted by total desc::
+
+        [{'entity': 'Spain', 'total': 150,
+          'prefixes': {'EA1': 40, 'EA2': 30, ...}}, ...]
     """
-    import re
+    from features.dxcc import callsign_to_dxcc
+
     base = "FROM qso_log WHERE award_id = ?"
     params: List = [award_id]
     if operator_callsign:
@@ -506,15 +509,22 @@ def get_qsos_by_dxcc(
             params,
         ).fetchall()
 
-    _prefix_re = re.compile(r'^([A-Z\d]*?\d+)')
-    by_prefix: Dict[str, int] = {}
+    entities: Dict[str, Dict[str, int]] = {}
     for r in rows:
-        raw = (r[0] or '').upper().split('/')[0]
-        m = _prefix_re.match(raw)
-        prefix = m.group(1) if m else raw[:2]
-        by_prefix[prefix] = by_prefix.get(prefix, 0) + r[1]
+        entity, prefix = callsign_to_dxcc(r[0] or '')
+        if entity not in entities:
+            entities[entity] = {}
+        entities[entity][prefix] = entities[entity].get(prefix, 0) + r[1]
 
-    return dict(sorted(by_prefix.items(), key=lambda kv: kv[1], reverse=True))
+    result = []
+    for entity, prefixes in entities.items():
+        result.append({
+            'entity': entity,
+            'total': sum(prefixes.values()),
+            'prefixes': dict(sorted(prefixes.items(), key=lambda kv: kv[1], reverse=True)),
+        })
+    result.sort(key=lambda x: x['total'], reverse=True)
+    return result
 
 
 def get_qsos_page(

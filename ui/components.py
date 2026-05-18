@@ -1000,7 +1000,7 @@ def _render_qso_charts(t, award_id, scoped_operator, stats,
     with chart_tabs[ct_idx]:
         if by_dxcc:
             st.caption(
-                t.get('qso_dxcc_unique', 'Unique DXCC prefixes: {count}')
+                t.get('qso_dxcc_unique', 'DXCC entities: {count}')
                 .format(count=len(by_dxcc))
             )
             fig_dxcc = create_qso_dxcc_chart(by_dxcc, t)
