@@ -556,7 +556,7 @@ def create_qso_dxcc_chart(by_dxcc, t):
         ),
         yaxis=dict(
             tickfont=dict(color='white', size=10), fixedrange=True,
-            autorange='reversed',
+            categoryorder='array', categoryarray=entities,
         ),
     )
     for entry in by_dxcc:
