@@ -511,8 +511,7 @@ def create_qso_dxcc_chart(by_dxcc, t):
         return None
 
     top = by_dxcc[:25]
-    top_reversed = list(reversed(top))
-    entities = [e['entity'] for e in top_reversed]
+    entities = [e['entity'] for e in top]
 
     all_prefixes: list[str] = []
     seen: set[str] = set()
@@ -527,7 +526,7 @@ def create_qso_dxcc_chart(by_dxcc, t):
         x_vals = []
         y_vals = []
         text_vals = []
-        for entry in top_reversed:
+        for entry in top:
             cnt = entry['prefixes'].get(prefix, 0)
             if cnt:
                 x_vals.append(cnt)
@@ -558,10 +557,10 @@ def create_qso_dxcc_chart(by_dxcc, t):
         ),
         yaxis=dict(
             tickfont=dict(color='white', size=10), fixedrange=True,
+            autorange='reversed',
         ),
     )
-    # Add total count as annotation to the right of each bar
-    for entry in top_reversed:
+    for entry in top:
         fig.add_annotation(
             x=entry['total'], y=entry['entity'],
             text=f"  {entry['total']}",
