@@ -479,6 +479,44 @@ def get_qsos_band_mode_matrix(
         return [{"band": r[0], "mode": r[1], "count": r[2]} for r in rows]
 
 
+def get_qsos_by_dxcc(
+    award_id: int, operator_callsign: Optional[str] = None,
+    start_date: Optional[str] = None, end_date: Optional[str] = None,
+) -> Dict[str, int]:
+    """QSO count per DXCC prefix, sorted by count desc.
+
+    Derives the prefix from each callsign (letters+digits up to and
+    including the area digit).  Returns dict prefix -> count.
+    """
+    import re
+    base = "FROM qso_log WHERE award_id = ?"
+    params: List = [award_id]
+    if operator_callsign:
+        base += " AND operator_callsign = ?"
+        params.append(operator_callsign.upper())
+    if start_date:
+        base += " AND qso_date >= ?"
+        params.append(start_date)
+    if end_date:
+        base += " AND qso_date <= ?"
+        params.append(end_date)
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT call, COUNT(*) AS cnt {base} GROUP BY call",
+            params,
+        ).fetchall()
+
+    _prefix_re = re.compile(r'^([A-Z\d]*?\d+)')
+    by_prefix: Dict[str, int] = {}
+    for r in rows:
+        raw = (r[0] or '').upper().split('/')[0]
+        m = _prefix_re.match(raw)
+        prefix = m.group(1) if m else raw[:2]
+        by_prefix[prefix] = by_prefix.get(prefix, 0) + r[1]
+
+    return dict(sorted(by_prefix.items(), key=lambda kv: kv[1], reverse=True))
+
+
 def get_qsos_page(
     award_id: int,
     operator_callsign: Optional[str] = None,

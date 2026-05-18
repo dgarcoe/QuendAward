@@ -546,6 +546,12 @@ def _cached_qsos_band_mode_matrix(award_id, operator_callsign, start_date=None, 
                                          start_date=start_date, end_date=end_date)
 
 
+@st.cache_data(ttl=20, show_spinner=False)
+def _cached_qsos_by_dxcc(award_id, operator_callsign, start_date=None, end_date=None):
+    return db.get_qsos_by_dxcc(award_id, operator_callsign=operator_callsign,
+                               start_date=start_date, end_date=end_date)
+
+
 def render_stats_tab(t, award_id, callsign=None, is_admin=False):
     """Render the dedicated Stats tab with operator activation statistics."""
     st.subheader(f"📊 {t.get('act_stats_title', 'Activation Statistics')}")
@@ -841,21 +847,18 @@ def render_qso_log_tab(t, award_id, operator_callsign, is_admin=False):
     start_date = award.get('start_date') or None if award else None
     end_date = award.get('end_date') or None if award else None
 
-    # --- Scope toggle (admin can see everyone's QSOs, operator is always own)
-    scope_is_own = True
-    if is_admin:
-        scope_choice = st.radio(
-            t.get('qso_scope_label', 'Scope'),
-            options=['own', 'all'],
-            format_func=lambda s: (
-                t.get('qso_scope_own', 'My QSOs') if s == 'own'
-                else t.get('qso_scope_all', 'All operators')
-            ),
-            horizontal=True,
-            key=f"qso_scope_{award_id}",
-        )
-        scope_is_own = (scope_choice == 'own')
-    scoped_operator = operator_callsign if scope_is_own else None
+    # --- Scope toggle (all operators can view stats for everyone)
+    scope_choice = st.radio(
+        t.get('qso_scope_label', 'Scope'),
+        options=['own', 'all'],
+        format_func=lambda s: (
+            t.get('qso_scope_own', 'My QSOs') if s == 'own'
+            else t.get('qso_scope_all', 'All operators')
+        ),
+        horizontal=True,
+        key=f"qso_scope_{award_id}",
+    )
+    scoped_operator = operator_callsign if scope_choice == 'own' else None
 
     # --- Upload section
     _render_qso_upload_section(t, award_id, operator_callsign, award_name)
@@ -890,6 +893,7 @@ def _render_qso_charts(t, award_id, scoped_operator, stats,
         create_qso_band_chart,
         create_qso_mode_chart,
         create_qso_operator_chart,
+        create_qso_dxcc_chart,
     )
 
     # --- Top-level metrics
@@ -946,11 +950,14 @@ def _render_qso_charts(t, award_id, scoped_operator, stats,
 
     # --- Charts behind lazy sub-tabs so only the visible one renders.
     # On mobile, rendering 5-6 Plotly figures at once is the main bottleneck.
+    by_dxcc = _cached_qsos_by_dxcc(award_id, scoped_operator, start_date, end_date)
+
     chart_tab_labels = [
         t.get('qso_chart_activity', 'Activity over time'),
         t.get('qso_chart_band_mode', 'Band / Mode'),
         t.get('qso_chart_bands', 'Bands'),
         t.get('qso_chart_hourly', 'Hourly'),
+        t.get('qso_chart_dxcc', 'DXCC'),
     ]
     if not scoped_operator and stats.get('by_operator'):
         chart_tab_labels.append(t.get('qso_chart_operators', 'Operators'))
@@ -988,6 +995,17 @@ def _render_qso_charts(t, award_id, scoped_operator, stats,
             fig_hourly = create_qso_hourly_chart(by_hour, t)
             if fig_hourly:
                 st.plotly_chart(fig_hourly, use_container_width=True)
+    ct_idx += 1
+
+    with chart_tabs[ct_idx]:
+        if by_dxcc:
+            st.caption(
+                t.get('qso_dxcc_unique', 'Unique DXCC prefixes: {count}')
+                .format(count=len(by_dxcc))
+            )
+            fig_dxcc = create_qso_dxcc_chart(by_dxcc, t)
+            if fig_dxcc:
+                st.plotly_chart(fig_dxcc, use_container_width=True)
     ct_idx += 1
 
     if not scoped_operator and stats.get('by_operator'):
@@ -1203,6 +1221,7 @@ def _render_qso_log_view(
                     _cached_qsos_by_date.clear()
                     _cached_qsos_by_hour.clear()
                     _cached_qsos_band_mode_matrix.clear()
+                    _cached_qsos_by_dxcc.clear()
                     st.success(
                         t.get(
                             'qso_deleted_ok',

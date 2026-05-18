@@ -488,6 +488,46 @@ def create_qso_operator_chart(by_operator, t):
     return fig
 
 
+def create_qso_dxcc_chart(by_dxcc, t):
+    """Horizontal bar chart of QSOs per DXCC prefix (top 25).
+
+    Args:
+        by_dxcc: Dict[str, int] prefix -> count, sorted by count desc.
+        t: Translations dict.
+    Returns:
+        Plotly Figure.
+    """
+    if not by_dxcc:
+        return None
+
+    items = list(by_dxcc.items())[:25]
+    prefixes = [i[0] for i in reversed(items)]
+    counts = [i[1] for i in reversed(items)]
+
+    fig = go.Figure(data=go.Bar(
+        x=counts, y=prefixes,
+        orientation='h',
+        marker_color='#81C784',
+        text=counts,
+        textposition='outside',
+        textfont=dict(color='white', size=11),
+        hovertemplate='%{y}: %{x} QSOs<extra></extra>',
+    ))
+    fig.update_layout(
+        **_QSO_LAYOUT,
+        height=max(150, len(prefixes) * 24 + 40),
+        margin=dict(l=55, r=35, t=5, b=5),
+        xaxis=dict(
+            tickfont=dict(color='white', size=10), fixedrange=True,
+            showgrid=False,
+        ),
+        yaxis=dict(
+            tickfont=dict(color='white', size=10), fixedrange=True,
+        ),
+    )
+    return fig
+
+
 # ---------------------------------------------------------------------------
 # Operator Activation Stats Charts
 # ---------------------------------------------------------------------------
