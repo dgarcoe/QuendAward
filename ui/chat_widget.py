@@ -654,6 +654,13 @@ def render_chat_widget(callsign, operator_name, rooms, all_histories,
         const sentinel = document.getElementById('chat-bottom');
         messagesEl.insertBefore(div, sentinel);
         saveLastRead(div.dataset.msgId);
+
+        // Prune oldest DOM nodes when chat exceeds 100 messages
+        var msgNodes = messagesEl.querySelectorAll('.msg');
+        while (msgNodes.length > 100) {{
+            msgNodes[0].remove();
+            msgNodes = messagesEl.querySelectorAll('.msg');
+        }}
     }}
 
     function formatSystemEvent(raw) {{
@@ -951,6 +958,7 @@ def render_chat_widget(callsign, operator_name, rooms, all_histories,
                             reply_to_callsign: data.reply_to ? data.reply_to.callsign : null,
                             reply_to_text: data.reply_to ? data.reply_to.text : null
                         }});
+                        if (ALL_HISTORY[key].length > 100) ALL_HISTORY[key].shift();
                     }}
                 }} catch(e) {{ /* ignore malformed */ }}
             }});

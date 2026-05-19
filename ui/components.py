@@ -406,7 +406,7 @@ def render_activity_dashboard(t, award_id, callsign=None):
     Returns:
         None
     """
-    from ui.charts import create_availability_heatmap, create_blocks_by_band_chart
+    from ui.charts import create_blocks_by_band_chart
     from streamlit_plotly_events import plotly_events
     from config import BANDS, MODES
 
@@ -416,9 +416,6 @@ def render_activity_dashboard(t, award_id, callsign=None):
 
     all_blocks = _cached_all_blocks(award_id)
 
-    # Skip the Plotly rebuild if nothing has actually changed since the last
-    # fragment tick. Rebuilding the heatmap allocates ~90 annotation objects
-    # for a 15x6 grid, which is wasted work every 5 seconds when idle.
     blocks_fingerprint = (
         award_id,
         st.session_state.language,
@@ -427,14 +424,7 @@ def render_activity_dashboard(t, award_id, callsign=None):
             for b in all_blocks
         ),
     )
-    prev_fingerprint = st.session_state.get('_blocks_fingerprint')
-    cached_fig = st.session_state.get('_cached_heatmap_fig')
-    if blocks_fingerprint != prev_fingerprint or cached_fig is None:
-        fig = create_availability_heatmap(all_blocks, t)
-        st.session_state._blocks_fingerprint = blocks_fingerprint
-        st.session_state._cached_heatmap_fig = fig
-    else:
-        fig = cached_fig
+    fig = _cached_heatmap_fig(blocks_fingerprint, all_blocks, t)
 
     # Disable modebar in figure config
     fig.update_layout(
@@ -509,12 +499,18 @@ def render_activity_dashboard(t, award_id, callsign=None):
     if all_blocks:
         with st.expander(f"📊 {t['blocks_by_band_label']}", expanded=False):
             fig_bar = create_blocks_by_band_chart(all_blocks, t)
-            st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+            st.plotly_chart(fig_bar, use_container_width=True, config={'staticPlot': True})
 
 
 @st.cache_data(ttl=5, show_spinner=False)
 def _cached_all_blocks(award_id):
     return db.get_all_blocks(award_id)
+
+
+@st.cache_data(ttl=5, show_spinner=False)
+def _cached_heatmap_fig(fingerprint, _all_blocks, _t):
+    from ui.charts import create_availability_heatmap
+    return create_availability_heatmap(_all_blocks, _t)
 
 
 @st.cache_data(ttl=20, show_spinner=False)
@@ -634,7 +630,8 @@ def _render_activation_stats(t, award_id, start_date=None, end_date=None, can_ed
         if stats['by_date'] and len(stats['by_date']) > 1:
             fig_tl = create_activation_timeline_chart(stats['by_date'], t)
             if fig_tl:
-                st.plotly_chart(fig_tl, use_container_width=True)
+                st.plotly_chart(fig_tl, use_container_width=True,
+                                config={'staticPlot': True})
         else:
             st.info(t.get('act_no_data', 'Not enough data yet.'))
 
@@ -642,7 +639,8 @@ def _render_activation_stats(t, award_id, start_date=None, end_date=None, can_ed
         if stats['by_operator']:
             fig_op = create_activation_operator_chart(stats['by_operator'], t)
             if fig_op:
-                st.plotly_chart(fig_op, use_container_width=True)
+                st.plotly_chart(fig_op, use_container_width=True,
+                                config={'staticPlot': True})
 
     with sub_tabs[2]:
         if stats['by_band'] or stats['by_mode']:
@@ -651,18 +649,21 @@ def _render_activation_stats(t, award_id, start_date=None, end_date=None, can_ed
                 st.caption(t.get('act_chart_band_title', 'Time per band'))
                 fig_b = create_activation_band_chart(stats['by_band'], t)
                 if fig_b:
-                    st.plotly_chart(fig_b, use_container_width=True)
+                    st.plotly_chart(fig_b, use_container_width=True,
+                                    config={'staticPlot': True})
             with mcol:
                 st.caption(t.get('act_chart_mode_title', 'Time per mode'))
                 fig_m = create_activation_mode_chart(stats['by_mode'], t)
                 if fig_m:
-                    st.plotly_chart(fig_m, use_container_width=True)
+                    st.plotly_chart(fig_m, use_container_width=True,
+                                    config={'staticPlot': True})
 
     with sub_tabs[3]:
         if stats['by_hour']:
             fig_h = create_activation_hourly_chart(stats['by_hour'], t)
             if fig_h:
-                st.plotly_chart(fig_h, use_container_width=True)
+                st.plotly_chart(fig_h, use_container_width=True,
+                                config={'staticPlot': True})
         else:
             st.info(t.get('act_no_data', 'Not enough data yet.'))
 
@@ -1006,50 +1007,62 @@ def _render_qso_charts(t, award_id, scoped_operator, stats,
         if by_date and len(by_date) > 1:
             fig_timeline = create_qso_timeline_chart(by_date, t)
             if fig_timeline:
-                st.plotly_chart(fig_timeline, use_container_width=True)
+                st.plotly_chart(fig_timeline, use_container_width=True,
+                                config={'staticPlot': True})
     ct_idx += 1
 
     with chart_tabs[ct_idx]:
         if bm_matrix:
             fig_bm = create_qso_band_mode_heatmap(bm_matrix, t)
             if fig_bm:
-                st.plotly_chart(fig_bm, use_container_width=True)
+                st.plotly_chart(fig_bm, use_container_width=True,
+                                config={'staticPlot': True})
         if stats['by_mode']:
             fig_mode = create_qso_mode_chart(stats['by_mode'], t)
             if fig_mode:
-                st.plotly_chart(fig_mode, use_container_width=True)
+                st.plotly_chart(fig_mode, use_container_width=True,
+                                config={'staticPlot': True})
     ct_idx += 1
 
     with chart_tabs[ct_idx]:
         if stats['by_band']:
             fig_band = create_qso_band_chart(stats['by_band'], t)
             if fig_band:
-                st.plotly_chart(fig_band, use_container_width=True)
+                st.plotly_chart(fig_band, use_container_width=True,
+                                config={'staticPlot': True})
     ct_idx += 1
 
     with chart_tabs[ct_idx]:
         if by_hour:
             fig_hourly = create_qso_hourly_chart(by_hour, t)
             if fig_hourly:
-                st.plotly_chart(fig_hourly, use_container_width=True)
+                st.plotly_chart(fig_hourly, use_container_width=True,
+                                config={'staticPlot': True})
     ct_idx += 1
 
     with chart_tabs[ct_idx]:
         if by_dxcc:
+            fig_dxcc, total_dxcc = create_qso_dxcc_chart(by_dxcc, t)
             st.caption(
                 t.get('qso_dxcc_unique', 'DXCC entities: {count}')
-                .format(count=len(by_dxcc))
+                .format(count=total_dxcc)
             )
-            fig_dxcc = create_qso_dxcc_chart(by_dxcc, t)
+            if total_dxcc > 25:
+                st.caption(
+                    t.get('qso_dxcc_showing_top', 'Showing top 25 of {count} entities')
+                    .format(count=total_dxcc)
+                )
             if fig_dxcc:
-                st.plotly_chart(fig_dxcc, use_container_width=True)
+                st.plotly_chart(fig_dxcc, use_container_width=True,
+                                config={'staticPlot': True})
     ct_idx += 1
 
     if not scoped_operator and stats.get('by_operator'):
         with chart_tabs[ct_idx]:
             fig_ops = create_qso_operator_chart(stats['by_operator'], t)
             if fig_ops:
-                st.plotly_chart(fig_ops, use_container_width=True)
+                st.plotly_chart(fig_ops, use_container_width=True,
+                                config={'staticPlot': True})
 
 
 def _render_qso_upload_section(t, award_id, operator_callsign, award_name):

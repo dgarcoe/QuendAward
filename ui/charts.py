@@ -505,10 +505,13 @@ def create_qso_dxcc_chart(by_dxcc, t):
                  sorted by total desc.
         t: Translations dict.
     Returns:
-        Plotly Figure or None.
+        Tuple (Plotly Figure, total_entities) or (None, 0).
     """
     if not by_dxcc:
-        return None
+        return None, 0
+
+    total_entities = len(by_dxcc)
+    by_dxcc = by_dxcc[:25]
 
     entities = [e['entity'] for e in by_dxcc]
 
@@ -567,7 +570,7 @@ def create_qso_dxcc_chart(by_dxcc, t):
             xanchor='left',
             font=dict(color='white', size=11),
         )
-    return fig
+    return fig, total_entities
 
 
 # ---------------------------------------------------------------------------

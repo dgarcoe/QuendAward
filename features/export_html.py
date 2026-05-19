@@ -185,8 +185,8 @@ def generate_stats_html(
     qso_dxcc_html = ""
     dxcc_count = 0
     if by_dxcc:
-        dxcc_count = len(by_dxcc)
-        qso_dxcc_html = _fig_to_html(create_qso_dxcc_chart(by_dxcc, t))
+        fig_dxcc, dxcc_count = create_qso_dxcc_chart(by_dxcc, t)
+        qso_dxcc_html = _fig_to_html(fig_dxcc)
 
     qso_operator_html = ""
     if qso_stats.get("by_operator"):
