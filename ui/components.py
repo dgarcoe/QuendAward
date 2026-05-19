@@ -899,7 +899,8 @@ def render_qso_log_tab(t, award_id, operator_callsign, is_admin=False):
     scoped_operator = operator_callsign if scope_choice == 'own' else None
 
     # --- Upload section
-    _render_qso_upload_section(t, award_id, operator_callsign, award_name)
+    _render_qso_upload_section(t, award_id, operator_callsign, award_name,
+                               is_admin=is_admin)
 
     st.divider()
 
@@ -1065,7 +1066,8 @@ def _render_qso_charts(t, award_id, scoped_operator, stats,
                                 config={'staticPlot': True})
 
 
-def _render_qso_upload_section(t, award_id, operator_callsign, award_name):
+def _render_qso_upload_section(t, award_id, operator_callsign, award_name,
+                               is_admin=False):
     """Upload an ADIF file and ingest it in the background."""
     from features.qso_log import MAX_ADIF_UPLOAD_BYTES
 
@@ -1077,6 +1079,25 @@ def _render_qso_upload_section(t, award_id, operator_callsign, award_name):
             'Duplicates are skipped automatically. Max 10 MB per upload.'
         )
     )
+
+    # Managers/admins can upload on behalf of another operator
+    target_callsign = operator_callsign
+    can_manage = db.can_manage_award(operator_callsign, award_id,
+                                     is_admin=is_admin) if operator_callsign else False
+    if can_manage:
+        all_ops = db.get_all_operators()
+        op_callsigns = [op['callsign'] for op in all_ops]
+        if operator_callsign.upper() in op_callsigns:
+            default_idx = op_callsigns.index(operator_callsign.upper())
+        else:
+            default_idx = 0
+        target_callsign = st.selectbox(
+            t.get('qso_upload_on_behalf', 'Upload on behalf of'),
+            options=op_callsigns,
+            format_func=lambda c: f"{c} — {next((op['operator_name'] for op in all_ops if op['callsign'] == c), '')}",
+            index=default_idx,
+            key=f"qso_upload_behalf_{award_id}",
+        )
 
     uploaded = st.file_uploader(
         t.get('qso_upload_label', 'ADIF file'),
@@ -1106,7 +1127,7 @@ def _render_qso_upload_section(t, award_id, operator_callsign, award_name):
 
         future = ingest_adif_async(
             award_id=award_id,
-            operator_callsign=operator_callsign,
+            operator_callsign=target_callsign,
             file_bytes=uploaded.getvalue(),
             filename=uploaded.name,
         )
