@@ -23,7 +23,7 @@ MODES = ['SSB', 'CW', 'FM', 'FT8', 'FT4', 'RTTY']
 BAND_MODES = {
     '160m': ['SSB', 'CW', 'FT8', 'FT4', 'RTTY'],
     '80m':  ['SSB', 'CW', 'FT8', 'FT4', 'RTTY'],
-    '60m':  ['CW', 'FT8', 'FT4', 'RTTY'],
+    '60m':  ['SSB', 'CW', 'FT8', 'FT4', 'RTTY'],
     '40m':  ['SSB', 'CW', 'FT8', 'FT4', 'RTTY'],
     '30m':  ['CW', 'FT8', 'FT4', 'RTTY'],
     '20m':  ['SSB', 'CW', 'FT8', 'FT4', 'RTTY'],
