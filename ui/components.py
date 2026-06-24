@@ -1507,6 +1507,37 @@ def _render_band_mode_config(t, award_id):
         current = db.get_award_band_modes(award_id)
         effective = current or BAND_MODES
 
+        # --- Per-mode toggle buttons ---
+        st.caption(t.get('band_mode_toggle_modes', 'Toggle entire mode:'))
+        mode_cols = st.columns(len(MODES))
+        for i, mode in enumerate(mode_cols):
+            m = MODES[i]
+            legal_bands = [b for b in BANDS if m in BAND_MODES.get(b, [])]
+            on_count = sum(1 for b in legal_bands if m in effective.get(b, []))
+            with mode:
+                if st.button(
+                    f"{'✅' if on_count == len(legal_bands) else '⬜'} {m}",
+                    key=f"mgr_bm_tog_{award_id}_{m}",
+                    use_container_width=True,
+                ):
+                    target_on = on_count < len(legal_bands)
+                    new_bm = {}
+                    for band in BANDS:
+                        global_allowed = BAND_MODES.get(band, [])
+                        cur_modes = list(effective.get(band, []))
+                        if m in global_allowed:
+                            if target_on and m not in cur_modes:
+                                cur_modes.append(m)
+                            elif not target_on and m in cur_modes:
+                                cur_modes.remove(m)
+                        if cur_modes:
+                            new_bm[band] = cur_modes
+                    value = None if new_bm == BAND_MODES else new_bm
+                    db.set_award_band_modes(award_id, value)
+                    st.cache_data.clear()
+                    st.rerun()
+
+        # --- Checkbox grid ---
         rows = {}
         for band in BANDS:
             global_allowed = BAND_MODES.get(band, [])
@@ -1528,8 +1559,6 @@ def _render_band_mode_config(t, award_id):
             key=f"mgr_bm_grid_{award_id}",
         )
 
-        # Disable cells that are globally illegal (greyed-out in the heatmap).
-        # data_editor doesn't support per-cell disable, so we force them off.
         for band in BANDS:
             global_allowed = BAND_MODES.get(band, [])
             for mode in MODES:
