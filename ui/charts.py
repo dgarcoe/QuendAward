@@ -17,17 +17,20 @@ _QSO_LAYOUT = dict(
 )
 
 
-def create_availability_heatmap(all_blocks, t):
+def create_availability_heatmap(all_blocks, t, award_band_modes=None):
     """
     Create a heatmap showing band/mode availability.
 
     Args:
         all_blocks: List of block dictionaries from database
         t: Translations dictionary for current language
+        award_band_modes: Per-award band/mode dict (None → use global BAND_MODES)
 
     Returns:
         Plotly Figure object
     """
+    effective_bm = award_band_modes or BAND_MODES
+
     # Create dictionaries for operator and date information
     blocks_dict = {(block['band'], block['mode']): block['operator_callsign'] for block in all_blocks}
     date_dict = {(block['band'], block['mode']): block['blocked_at'] for block in all_blocks}
@@ -44,7 +47,7 @@ def create_availability_heatmap(all_blocks, t):
         text_row = []
         hover_row = []
         color_row = []
-        allowed = BAND_MODES.get(band, [])
+        allowed = effective_bm.get(band, [])
         for mode in MODES:
             key = (band, mode)
             if mode not in allowed:

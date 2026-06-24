@@ -54,6 +54,8 @@ from features.awards import (
     update_award,
     update_award_image,
     get_award_image,
+    get_award_band_modes,
+    set_award_band_modes,
     toggle_award_status,
     delete_award,
 )

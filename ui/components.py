@@ -195,19 +195,22 @@ def render_block_unblock_section(t, callsign, award_id):
     Returns:
         None
     """
-    from config import BANDS, BAND_MODES
+    from config import BANDS, get_effective_band_modes
 
     if not award_id:
         st.warning(f"⚠️ {t['error_no_special_callsign_selected']}")
         return
 
+    award_bm = get_effective_band_modes(award_id)
+    active_bands = [b for b in BANDS if award_bm.get(b)]
+
     st.info(t['block_info'])
 
     col1, col2 = st.columns(2)
     with col1:
-        band_to_block = st.selectbox(t['select_band'], BANDS, key="block_band")
+        band_to_block = st.selectbox(t['select_band'], active_bands, key="block_band")
     with col2:
-        allowed_modes = BAND_MODES.get(band_to_block, [])
+        allowed_modes = award_bm.get(band_to_block, [])
         mode_to_block = st.selectbox(t['select_mode'], allowed_modes, key=f"block_mode_{band_to_block}")
 
     if st.button(t['block'], type="primary"):
@@ -408,23 +411,26 @@ def render_activity_dashboard(t, award_id, callsign=None):
     """
     from ui.charts import create_blocks_by_band_chart
     from streamlit_plotly_events import plotly_events
-    from config import BANDS, MODES
+    from config import BANDS, MODES, get_effective_band_modes
 
     if not award_id:
         st.warning(f"⚠️ {t['error_no_special_callsign_selected']}")
         return
 
     all_blocks = _cached_all_blocks(award_id)
+    award_bm = get_effective_band_modes(award_id)
+    award_bm_key = tuple(sorted((b, tuple(m)) for b, m in award_bm.items()))
 
     blocks_fingerprint = (
         award_id,
         st.session_state.language,
+        award_bm_key,
         tuple(
             (b['operator_callsign'], b['operator_name'], b['band'], b['mode'], b['blocked_at'])
             for b in all_blocks
         ),
     )
-    fig = _cached_heatmap_fig(blocks_fingerprint, all_blocks, t)
+    fig = _cached_heatmap_fig(blocks_fingerprint, all_blocks, t, award_bm)
 
     # Disable modebar in figure config
     fig.update_layout(
@@ -461,8 +467,7 @@ def render_activity_dashboard(t, award_id, callsign=None):
         clicked_band = BANDS[y_idx]
         clicked_mode = MODES[x_idx]
 
-        from config import is_band_mode_legal
-        if not is_band_mode_legal(clicked_band, clicked_mode):
+        if clicked_mode not in award_bm.get(clicked_band, []):
             st.info(f"ℹ️ {clicked_mode} {t.get('error_band_mode_illegal_short', 'is not used on the')} {clicked_band} {t.get('band_label', 'band')}")
             return
 
@@ -508,9 +513,9 @@ def _cached_all_blocks(award_id):
 
 
 @st.cache_data(ttl=5, show_spinner=False)
-def _cached_heatmap_fig(fingerprint, _all_blocks, _t):
+def _cached_heatmap_fig(fingerprint, _all_blocks, _t, _award_bm=None):
     from ui.charts import create_availability_heatmap
-    return create_availability_heatmap(_all_blocks, _t)
+    return create_availability_heatmap(_all_blocks, _t, _award_bm)
 
 
 @st.cache_data(ttl=20, show_spinner=False)
@@ -1479,6 +1484,101 @@ def _get_logger():
 
 
 # ---------------------------------------------------------------------------
+# Per-award band/mode configuration
+# ---------------------------------------------------------------------------
+
+def _render_band_mode_config(t, award_id):
+    """Render the band/mode checkbox grid for per-award configuration."""
+    import pandas as pd
+    from config import BANDS, MODES, BAND_MODES
+
+    with st.expander(
+        f"📻 {t.get('band_mode_config_title', 'Allowed bands & modes')}",
+        expanded=False,
+    ):
+        st.caption(
+            t.get(
+                'band_mode_config_help',
+                'Uncheck bands or modes you do not want to use for this callsign. '
+                'Only checked combinations will appear on the dashboard and be available for blocking.',
+            )
+        )
+
+        current = db.get_award_band_modes(award_id)
+        effective = current or BAND_MODES
+
+        rows = {}
+        for band in BANDS:
+            global_allowed = BAND_MODES.get(band, [])
+            band_allowed = effective.get(band, [])
+            row = {}
+            for mode in MODES:
+                if mode in global_allowed:
+                    row[mode] = mode in band_allowed
+                else:
+                    row[mode] = False
+            rows[band] = row
+
+        df = pd.DataFrame.from_dict(rows, orient='index')
+        df.index.name = t.get('band_label', 'Band')
+
+        edited = st.data_editor(
+            df,
+            use_container_width=True,
+            key=f"mgr_bm_grid_{award_id}",
+            disabled={
+                mode: False for mode in MODES
+            },
+        )
+
+        # Disable cells that are globally illegal (greyed-out in the heatmap).
+        # data_editor doesn't support per-cell disable, so we force them off.
+        for band in BANDS:
+            global_allowed = BAND_MODES.get(band, [])
+            for mode in MODES:
+                if mode not in global_allowed:
+                    edited.at[band, mode] = False
+
+        new_bm = {}
+        for band in BANDS:
+            modes_on = [m for m in MODES if edited.at[band, m]]
+            if modes_on:
+                new_bm[band] = modes_on
+
+        is_default = (new_bm == BAND_MODES)
+
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            if st.button(
+                t.get('save_changes', 'Save changes'),
+                key=f"mgr_bm_save_{award_id}",
+                type='primary',
+                use_container_width=True,
+            ):
+                value = None if is_default else new_bm
+                ok, msg = db.set_award_band_modes(award_id, value)
+                if ok:
+                    st.cache_data.clear()
+                    st.success(t.get('changes_saved', 'Saved.'))
+                    st.rerun()
+                else:
+                    st.error(msg)
+        with bc2:
+            if st.button(
+                t.get('band_mode_reset_defaults', 'Reset to defaults'),
+                key=f"mgr_bm_reset_{award_id}",
+                use_container_width=True,
+            ):
+                ok, msg = db.set_award_band_modes(award_id, None)
+                if ok:
+                    st.cache_data.clear()
+                    st.success(t.get('changes_saved', 'Saved.'))
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+
+# ---------------------------------------------------------------------------
 # Per-award manager panel
 # ---------------------------------------------------------------------------
 
@@ -1592,6 +1692,11 @@ def render_manage_award_tab(t, callsign, is_admin=False):
             st.rerun()
         else:
             st.error(msg)
+
+    st.divider()
+
+    # Band/mode configuration
+    _render_band_mode_config(t, award_id)
 
     st.divider()
 

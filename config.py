@@ -43,6 +43,14 @@ def is_band_mode_legal(band: str, mode: str) -> bool:
     """Return True if the given mode is legally usable on the given band."""
     return mode in BAND_MODES.get(band, [])
 
+
+def get_effective_band_modes(award_id=None):
+    """Return the band/mode dict for an award, falling back to global BAND_MODES."""
+    if award_id is None:
+        return BAND_MODES
+    from features.awards import get_award_band_modes
+    return get_award_band_modes(award_id) or BAND_MODES
+
 # Admin credentials from environment variables
 ADMIN_CALLSIGN = os.getenv('ADMIN_CALLSIGN', '').upper()
 _raw_admin_password = os.getenv('ADMIN_PASSWORD', '')

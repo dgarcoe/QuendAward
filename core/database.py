@@ -399,6 +399,7 @@ def _run_migrations(cursor, conn):
     _migrate_chat_messages_system_source(cursor)
     _migrate_qso_log_batch_id(cursor)
     _migrate_telegram_notify_filters(cursor)
+    _migrate_awards_allowed_band_modes(cursor)
 
     # Create app_settings key-value table
     cursor.execute('''
@@ -580,6 +581,12 @@ def _migrate_telegram_notify_filters(cursor):
         cursor.execute('ALTER TABLE telegram_links ADD COLUMN notify_bands TEXT')
     if 'notify_modes' not in cols:
         cursor.execute('ALTER TABLE telegram_links ADD COLUMN notify_modes TEXT')
+
+
+def _migrate_awards_allowed_band_modes(cursor):
+    """Add allowed_band_modes column to awards if missing."""
+    if 'allowed_band_modes' not in _get_column_names(cursor, 'awards'):
+        cursor.execute('ALTER TABLE awards ADD COLUMN allowed_band_modes TEXT')
 
 
 # ---------------------------------------------------------------------------

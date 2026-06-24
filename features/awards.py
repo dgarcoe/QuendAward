@@ -1,9 +1,10 @@
 """
 Award management functions.
 """
+import json
 import logging
 import sqlite3
-from typing import List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 
 from core.database import get_db
 
@@ -121,6 +122,32 @@ def get_award_image(award_id: int) -> Optional[Tuple[bytes, str]]:
         if result and result['image_data']:
             return result['image_data'], result['image_type']
         return None
+
+
+def get_award_band_modes(award_id: int) -> Optional[Dict[str, List[str]]]:
+    """Return the per-award band/mode configuration, or None for global defaults."""
+    award = get_award_by_id(award_id)
+    if award and award.get('allowed_band_modes'):
+        try:
+            return json.loads(award['allowed_band_modes'])
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return None
+
+
+def set_award_band_modes(award_id: int, band_modes: Optional[Dict[str, List[str]]]) -> Tuple[bool, str]:
+    """Store per-award band/mode configuration. Pass None to reset to global defaults."""
+    try:
+        value = json.dumps(band_modes) if band_modes else None
+        with get_db() as conn:
+            conn.execute(
+                'UPDATE awards SET allowed_band_modes = ? WHERE id = ?',
+                (value, award_id),
+            )
+        return True, "Band/mode configuration saved"
+    except Exception:
+        logger.exception("Error saving band/mode configuration")
+        return False, "An unexpected error occurred. Please try again."
 
 
 def toggle_award_status(award_id: int) -> Tuple[bool, str]:
