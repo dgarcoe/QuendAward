@@ -1526,9 +1526,6 @@ def _render_band_mode_config(t, award_id):
             df,
             use_container_width=True,
             key=f"mgr_bm_grid_{award_id}",
-            disabled={
-                mode: False for mode in MODES
-            },
         )
 
         # Disable cells that are globally illegal (greyed-out in the heatmap).
